@@ -8,28 +8,27 @@ public class PartInteractable : MonoBehaviour
     [Header("拆卸判定")]
     [SerializeField] private float detachDistance = 0.5f;
 
+    [Header("培训系统")]
+    [SerializeField] private TrainingManager trainingManager;
+
     private Vector3 originalPosition;
     private bool detached = false;
 
     private void Start()
     {
-        // 记录 Battery 初始世界坐标
         originalPosition = transform.position;
     }
 
     private void Update()
     {
-        // 已经拆卸成功，就不再重复检测
         if (detached)
             return;
 
-        // 计算 Battery 与初始位置的距离
         float distance = Vector3.Distance(
             transform.position,
             originalPosition
         );
 
-        // 超过指定距离
         if (distance >= detachDistance)
         {
             DetachSuccess();
@@ -41,5 +40,16 @@ public class PartInteractable : MonoBehaviour
         detached = true;
 
         Debug.Log($"【拆卸成功】{partName}");
+
+        if (trainingManager != null)
+        {
+            trainingManager.CompleteCurrentStep();
+        }
+        else
+        {
+            Debug.LogWarning(
+                $"【培训系统】{partName} 没有绑定 TrainingManager。"
+            );
+        }
     }
 }

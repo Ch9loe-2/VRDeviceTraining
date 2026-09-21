@@ -423,6 +423,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   partName: Battery
   detachDistance: 0.5
+  trainingManager: {fileID: 2022842900}
 --- !u!1 &186671773
 GameObject:
   m_ObjectHideFlags: 0
@@ -2722,6 +2723,57 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2022842899
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2022842901}
+  - component: {fileID: 2022842900}
+  m_Layer: 0
+  m_Name: TrainingManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2022842900
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2022842899}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc108e4fa26414007b92ebd11691d69c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  steps:
+  - stepName: "\u62C6\u5378 Battery"
+    description: "\u5C06 Battery \u4ECE\u8BBE\u5907\u4E3B\u4F53\u4E0A\u62C6\u4E0B\u3002"
+    completed: 0
+  - stepName: "\u62C6\u5378\u540E\u76D6"
+    description: "\u62C6\u4E0B\u8BBE\u5907\u540E\u76D6\u3002\n"
+    completed: 0
+--- !u!4 &2022842901
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2022842899}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 1.6, z: 2}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -2732,3 +2784,4 @@ SceneRoots:
   - {fileID: 877255166}
   - {fileID: 1684264049}
   - {fileID: 1031189234}
+  - {fileID: 2022842901}
