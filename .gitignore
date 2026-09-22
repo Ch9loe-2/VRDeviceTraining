@@ -107,3 +107,8 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Large / non-redistributable assets: keep local only, do not commit
+# Arial Unicode MS is bundled with macOS (Monotype commercial license, 22 MB)
+/Assets/Fonts/
+/Assets/TextMesh Pro/
