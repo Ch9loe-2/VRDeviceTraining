@@ -439,6 +439,7 @@ GameObject:
   - component: {fileID: 22876764}
   - component: {fileID: 22876768}
   - component: {fileID: 22876769}
+  - component: {fileID: -100}
   m_Layer: 5
   m_Name: TrainingCanvas
   m_TagString: Untagged
@@ -583,6 +584,26 @@ MonoBehaviour:
   timePrefix: "\u57F9\u8BAD\u8017\u65F6\uFF1A"
   wrongPrefix: "\u9519\u8BEF\u64CD\u4F5C\uFF1A"
   resetCountPrefix: "\u91CD\u7F6E\u6B21\u6570\uFF1A"
+
+--- !u!114 &-100
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 22876763}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7951c64acb0fa62458bf30a60089fe2d, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  m_IgnoreReversedGraphics: 0
+  m_CheckFor2DOcclusion: 0
+  m_CheckFor3DOcclusion: 0
+  m_BlockingObjects: 0
+  m_BlockingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
 --- !u!1 &49643641
 GameObject:
   m_ObjectHideFlags: 0
@@ -2869,6 +2890,7 @@ GameObject:
   - component: {fileID: 1244777724}
   - component: {fileID: 1244777723}
   - component: {fileID: 1244777722}
+  - component: {fileID: -200}
   m_Layer: 0
   m_Name: EventSystem
   m_TagString: Untagged
@@ -2896,6 +2918,32 @@ MonoBehaviour:
   m_InputActionsPerSecond: 10
   m_RepeatDelay: 0.5
   m_ForceModuleActive: 0
+--- !u!114 &-200
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1244777721}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab68ce6587aab0146b8dabefbd806791, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  m_Actions: {fileID: 0}
+  m_RepeatDelay: 0.5
+  m_TrackedDeviceDragThreshold: 5
+  m_XRRayInteractorTag:
+  m_StickDeadzone: 0.15
+  m_StickToScrollTime: 0.2
+  m_PixelDragThresholdUI: 5
+  m_TextTypingSpeed: 0
+  m_StickyScrollTimeout: 0.3
+  m_CursorVisibilitySettings:
+    m_ModifyCursor: 0
+    m_CursorLockMode: -1
+    m_CursorVisible: 0
+  m_ActionsEventsToIgnore: 0
 --- !u!114 &1244777723
 MonoBehaviour:
   m_ObjectHideFlags: 0
