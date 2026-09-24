@@ -1,0 +1,35 @@
+fileFormatVersion: 2
+guid: ce031c3a-a71c-2e8c-faf6-6daace14e9cf
+timeCreated: 1724370000
+licenseType: Free
+TrueTypeFontImporter:
+  serializedVersion: 4
+  defaultFaceName: Noto Sans SC
+  forceTextureCase: -2
+  characterPadding: 1
+  borderPadding: 1
+  extraPadding: 0
+  includeFontData: 1
+  fontNameCaseInsensitive: Noto Sans SC
+  fontReference: {fileID: 0}
+  fallbackFontReferences: []
+  fontNames:
+  - Noto Sans SC
+  fallbackFontNames: []
+  fallbackFontReferencesRanges: []
+  applySystemSize: 1
+  shouldAdvance: 1
+  shouldRoundAdvance: 0
+  ascentCalculationMode: 1
+  useLegacyBoundsCalculation: 0
+  characterSpacing: 0
+  wordSpacing: 0
+  customCharacters: 
+  fontRenderingMode: 0
+  kerning: 1
+  characterPaddingTexture: 1
+  borderPaddingTexture: 1
+  extraPaddingTexture: 0
+  useRecommendedRendering: 0
+  includeFontDataInFont: 1
+  fontRenderingModeInFont: 0
