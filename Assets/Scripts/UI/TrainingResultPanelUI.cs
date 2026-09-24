@@ -111,7 +111,7 @@ public class TrainingResultPanelUI : MonoBehaviour
             return;
 
         SetText(resultTitle, resultTitleText);
-        SetText(statusText, result.isCompleted ? statusCompleted : statusNotCompleted);
+        SetText(statusText, $"得分：{result.Score}/100 | 等级：{result.Grade}");
         SetText(timeText, timePrefix + result.elapsedSeconds.ToString("0.0") + SuffixSecond);
         SetText(wrongText, wrongPrefix + result.wrongOperationCount + SuffixCount);
         SetText(resetCountText, resetCountPrefix + result.resetCount + SuffixCount);
