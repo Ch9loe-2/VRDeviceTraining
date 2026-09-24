@@ -29,6 +29,10 @@ public class TrainingTaskPanelUI : MonoBehaviour
 
     [SerializeField] private string hintPrefix = "请先完成：";
 
+    [Header("操作按钮")]
+    [Tooltip("重新开始按钮。为空时只能通过代码调用 TrainingManager.ResetTraining()。")]
+    [SerializeField] private Button resetButton;
+
     [Header("显示文案")]
     [Tooltip("任务标题，一般不需要改动")]
     [SerializeField] private string taskTitle = "设备拆装培训";
@@ -54,6 +58,18 @@ public class TrainingTaskPanelUI : MonoBehaviour
     private void Awake()
     {
         stepTexts = new[] { step1Text, step2Text, step3Text };
+
+        if (resetButton != null)
+        {
+            resetButton.onClick.RemoveListener(OnResetButtonClicked);
+            resetButton.onClick.AddListener(OnResetButtonClicked);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (resetButton != null)
+            resetButton.onClick.RemoveListener(OnResetButtonClicked);
     }
 
     private void OnEnable()
@@ -75,6 +91,8 @@ public class TrainingTaskPanelUI : MonoBehaviour
         // 先取消再订阅，避免重复订阅导致一次误操作触发多次
         trainingManager.OnWrongOperation -= HandleWrongOperation;
         trainingManager.OnWrongOperation += HandleWrongOperation;
+        trainingManager.OnTrainingReset -= HandleTrainingReset;
+        trainingManager.OnTrainingReset += HandleTrainingReset;
     }
 
     private void UnsubscribeTrainingEvents()
@@ -83,6 +101,30 @@ public class TrainingTaskPanelUI : MonoBehaviour
             return;
 
         trainingManager.OnWrongOperation -= HandleWrongOperation;
+        trainingManager.OnTrainingReset -= HandleTrainingReset;
+    }
+
+    /// <summary>
+    /// 收到培训重置事件：立刻刷新面板，并清掉可能还挂着的误操作提示。
+    /// 零件在同一次广播里由 PartInteractable 自行复位，这里不碰任何零件状态。
+    /// </summary>
+    private void HandleTrainingReset()
+    {
+        hintHideTime = 0f;
+        SetText(hintText, string.Empty);
+
+        Refresh();
+    }
+
+    private void OnResetButtonClicked()
+    {
+        if (trainingManager == null)
+        {
+            Debug.LogWarning("[任务面板] 未绑定 TrainingManager，无法重置培训。", this);
+            return;
+        }
+
+        trainingManager.ResetTraining();
     }
 
     /// <summary>

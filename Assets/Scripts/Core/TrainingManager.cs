@@ -18,6 +18,12 @@ public class TrainingManager : MonoBehaviour
     /// </summary>
     public event System.Action<int> OnWrongOperation;
 
+    /// <summary>
+    /// 培训重置事件。TrainingManager 完成数据重置后广播，
+    /// 由 PartInteractable（恢复零件）与 TrainingTaskPanelUI（刷新 UI）各自订阅。
+    /// </summary>
+    public event System.Action OnTrainingReset;
+
     public TrainingStep CurrentStep
     {
         get
@@ -82,5 +88,26 @@ public class TrainingManager : MonoBehaviour
         }
 
         Debug.Log($"【下一步】{CurrentStep.stepName}");
+    }
+
+    /// <summary>
+    /// 重置整个培训流程。
+    /// 统一入口：先把所有步骤数据清空、索引回到第一步，再广播 OnTrainingReset，
+    /// 由各个订阅者（零件、UI）负责恢复自己的局部状态。
+    /// 顺序必须是「先数据、后广播」，否则零件会按旧的 currentStepIndex 重算锁定状态。
+    /// </summary>
+    public void ResetTraining()
+    {
+        for (int i = 0; i < steps.Count; i++)
+        {
+            if (steps[i] != null)
+                steps[i].completed = false;
+        }
+
+        currentStepIndex = 0;
+
+        Debug.Log("【培训重置】已恢复到第一步");
+
+        OnTrainingReset?.Invoke();
     }
 }

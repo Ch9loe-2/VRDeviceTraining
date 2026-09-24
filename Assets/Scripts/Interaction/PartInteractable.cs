@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
 
@@ -24,10 +25,18 @@ public class PartInteractable : MonoBehaviour
     [SerializeField] private int requiredStepIndex = 0;
 
     private Vector3 originalPosition;
+    private Quaternion originalRotation;
     private bool detached = false;
 
     private XRGrabInteractable grabInteractable;
     private int lastStepIndex = int.MinValue;
+
+    // ===== 初始物理状态（M23-2）=====
+    // 在 Awake 里抓取，此时还没有发生过任何抓取 / 拆卸，拿到的就是 Inspector 里的设计值。
+    private Rigidbody partRigidbody;
+    private bool initialIsKinematic;
+    private bool initialUseGravity;
+    private RigidbodyConstraints initialConstraints;
 
     // ===== 误操作上报（M23-1）=====
     // 被锁定的零件其 XRGrabInteractable.enabled = false，XRI 不会对它发出任何 hover/select 事件，
@@ -39,6 +48,16 @@ public class PartInteractable : MonoBehaviour
     private void Awake()
     {
         grabInteractable = GetComponent<XRGrabInteractable>();
+
+        originalRotation = transform.rotation;
+
+        partRigidbody = GetComponent<Rigidbody>();
+        if (partRigidbody != null)
+        {
+            initialIsKinematic = partRigidbody.isKinematic;
+            initialUseGravity = partRigidbody.useGravity;
+            initialConstraints = partRigidbody.constraints;
+        }
     }
 
     private void Start()
@@ -50,7 +69,31 @@ public class PartInteractable : MonoBehaviour
 
     private void OnEnable()
     {
+        SubscribeTrainingEvents();
         RefreshLockState(true);
+    }
+
+    private void OnDisable()
+    {
+        UnsubscribeTrainingEvents();
+    }
+
+    private void SubscribeTrainingEvents()
+    {
+        if (trainingManager == null)
+            return;
+
+        // 先取消再订阅，避免重复订阅导致一次重置恢复多次
+        trainingManager.OnTrainingReset -= ResetPart;
+        trainingManager.OnTrainingReset += ResetPart;
+    }
+
+    private void UnsubscribeTrainingEvents()
+    {
+        if (trainingManager == null)
+            return;
+
+        trainingManager.OnTrainingReset -= ResetPart;
     }
 
     private void Update()
@@ -201,6 +244,79 @@ public class PartInteractable : MonoBehaviour
         // 命中的是本零件自身的碰撞体（或被本零件包含的碰撞体）
         return hit.collider.gameObject == gameObject
                || hit.collider.GetComponentInParent<PartInteractable>() == this;
+    }
+
+    /// <summary>
+    /// 培训重置：把本零件完全恢复到初始状态。
+    /// 严格按四步顺序执行，顺序不能颠倒：
+    ///   1. 先强制退出 XR 抓取（拿着东西时不能硬改 Transform，否则会跟 XRI 打架）；
+    ///   2. 再恢复 Transform（位置 + 旋转）；
+    ///   3. 再恢复 Rigidbody 初始状态（清速度、还原 kinematic/gravity/constraints）；
+    ///   4. 最后按重置后的 currentStepIndex 重算抓取锁定。
+    /// </summary>
+    public void ResetPart()
+    {
+        ForceReleaseFromXR();
+
+        detached = false;
+        wrongAttemptReported = false;
+
+        transform.position = originalPosition;
+        transform.rotation = originalRotation;
+
+        if (partRigidbody == null)
+            partRigidbody = GetComponent<Rigidbody>();
+
+        if (partRigidbody != null)
+        {
+            partRigidbody.velocity = Vector3.zero;
+            partRigidbody.angularVelocity = Vector3.zero;
+            partRigidbody.isKinematic = initialIsKinematic;
+            partRigidbody.useGravity = initialUseGravity;
+            partRigidbody.constraints = initialConstraints;
+            partRigidbody.Sleep();
+        }
+
+        // 让下一次 Update 与 RefreshLockState 都按「全新的第一步」重新判定。
+        lastStepIndex = int.MinValue;
+        RefreshLockState(true);
+
+        Debug.Log($"【培训重置】{partName} 已复位");
+    }
+
+    /// <summary>
+    /// 强制从所有正在抓取本零件的 interactors 上退出。
+    /// 直接遍历 interactorsSelecting 并逐个 SelectExit；倒序 + 快照，
+    /// 避免 SelectExit 修改原集合导致遍历错乱。
+    /// </summary>
+    private void ForceReleaseFromXR()
+    {
+        if (grabInteractable == null)
+            grabInteractable = GetComponent<XRGrabInteractable>();
+
+        if (grabInteractable == null)
+            return;
+
+        if (!grabInteractable.isSelected)
+            return;
+
+        var interactionManager = grabInteractable.interactionManager;
+        var selecting = grabInteractable.interactorsSelecting;
+
+        if (interactionManager == null || selecting == null || selecting.Count == 0)
+            return;
+
+        // 用快照遍历：SelectExit 会同步修改 interactorsSelecting。
+        var snapshot = new List<IXRSelectInteractor>(selecting);
+
+        for (int i = snapshot.Count - 1; i >= 0; i--)
+        {
+            var interactor = snapshot[i];
+            if (interactor == null)
+                continue;
+
+            interactionManager.SelectExit(interactor, grabInteractable);
+        }
     }
 
     private void DetachSuccess()
