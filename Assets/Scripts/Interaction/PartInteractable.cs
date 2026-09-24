@@ -29,6 +29,13 @@ public class PartInteractable : MonoBehaviour
     private XRGrabInteractable grabInteractable;
     private int lastStepIndex = int.MinValue;
 
+    // ===== 误操作上报（M23-1）=====
+    // 被锁定的零件其 XRGrabInteractable.enabled = false，XRI 不会对它发出任何 hover/select 事件，
+    // 所以「玩家尝试抓取被锁定零件」这件事在 XRI 事件层面是不可见的。
+    // 这里改用「玩家正在按抓取键 + 射线正命中本零件」来判定一次真实尝试。
+    private XRRayInteractor[] rayInteractors;
+    private bool wrongAttemptReported;
+
     private void Awake()
     {
         grabInteractable = GetComponent<XRGrabInteractable>();
@@ -37,6 +44,7 @@ public class PartInteractable : MonoBehaviour
     private void Start()
     {
         originalPosition = transform.position;
+        rayInteractors = FindObjectsOfType<XRRayInteractor>();
         RefreshLockState(true);
     }
 
@@ -54,7 +62,11 @@ public class PartInteractable : MonoBehaviour
             return;
 
         if (!IsMyStep())
+        {
+            // 非本零件的步骤：只做一次性的「尝试操作被锁定零件」上报，不改变原有锁定与流程。
+            CheckWrongAttempt();
             return;
+        }
 
         float distance = Vector3.Distance(
             transform.position,
@@ -122,6 +134,73 @@ public class PartInteractable : MonoBehaviour
             grabInteractable.enabled = shouldBeGrabbable;
             Debug.Log($"【培训流程】{partName} 抓取状态：{(shouldBeGrabbable ? "可抓取" : "已锁定")}（当前步骤 {currentStep}，本零件需要 {requiredStepIndex}）");
         }
+    }
+
+    /// <summary>
+    /// 检测「玩家尝试抓取被锁定的本零件」。
+    ///
+    /// 触发条件（三条同时满足才算一次真实尝试，避免把射线扫过当成误操作）：
+    ///   1. 本零件当前不是当前步骤（已锁定）；
+    ///   2. 某个 XRRayInteractor 正处于 select 激活状态（玩家按住了抓取键）；
+    ///   3. 该 interactor 的射线正命中本零件。
+    ///
+    /// 同一次按住只上报一次；松开后标志复位，再次尝试可再次上报。
+    /// </summary>
+    private void CheckWrongAttempt()
+    {
+        if (trainingManager == null)
+            return;
+
+        if (rayInteractors == null || rayInteractors.Length == 0)
+            rayInteractors = FindObjectsOfType<XRRayInteractor>();
+
+        bool anySelectActive = false;
+
+        for (int i = 0; i < rayInteractors.Length; i++)
+        {
+            var interactor = rayInteractors[i];
+            if (interactor == null)
+                continue;
+
+            if (!((IXRSelectInteractor)interactor).isSelectActive)
+                continue;
+
+            anySelectActive = true;
+
+            if (!IsAimingAtThisPart(interactor))
+                continue;
+
+            if (wrongAttemptReported)
+                continue;
+
+            wrongAttemptReported = true;
+            trainingManager.RecordWrongOperation(requiredStepIndex);
+        }
+
+        // 玩家松开抓取键后复位，允许下一次尝试再次记录。
+        if (!anySelectActive)
+            wrongAttemptReported = false;
+    }
+
+    /// <summary>
+    /// 指定 interactor 的射线是否正指向本零件。
+    /// </summary>
+    private bool IsAimingAtThisPart(XRRayInteractor interactor)
+    {
+        Transform origin = interactor.rayOriginTransform != null
+            ? interactor.rayOriginTransform
+            : interactor.transform;
+
+        RaycastHit hit;
+        if (!Physics.Raycast(origin.position, origin.forward, out hit, 20f))
+            return false;
+
+        if (hit.collider == null)
+            return false;
+
+        // 命中的是本零件自身的碰撞体（或被本零件包含的碰撞体）
+        return hit.collider.gameObject == gameObject
+               || hit.collider.GetComponentInParent<PartInteractable>() == this;
     }
 
     private void DetachSuccess()

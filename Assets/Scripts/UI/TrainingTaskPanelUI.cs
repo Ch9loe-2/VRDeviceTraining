@@ -20,6 +20,15 @@ public class TrainingTaskPanelUI : MonoBehaviour
     [SerializeField] private Text step2Text;
     [SerializeField] private Text step3Text;
 
+    [Header("错误提示")]
+    [Tooltip("误操作提示文本。为空时只在 Console 输出，不显示提示。")]
+    [SerializeField] private Text hintText;
+
+    [Tooltip("提示显示时长（秒）")]
+    [SerializeField] private float hintDuration = 2f;
+
+    [SerializeField] private string hintPrefix = "请先完成：";
+
     [Header("显示文案")]
     [Tooltip("任务标题，一般不需要改动")]
     [SerializeField] private string taskTitle = "设备拆装培训";
@@ -39,6 +48,9 @@ public class TrainingTaskPanelUI : MonoBehaviour
     private bool lastAllCompleted;
     private bool warnedMissingManager;
 
+    // 提示的到期时间（Time.time 基准）；<= 0 表示当前没有正在显示的提示
+    private float hintHideTime;
+
     private void Awake()
     {
         stepTexts = new[] { step1Text, step2Text, step3Text };
@@ -46,7 +58,65 @@ public class TrainingTaskPanelUI : MonoBehaviour
 
     private void OnEnable()
     {
+        SubscribeTrainingEvents();
         Refresh();
+    }
+
+    private void OnDisable()
+    {
+        UnsubscribeTrainingEvents();
+    }
+
+    private void SubscribeTrainingEvents()
+    {
+        if (trainingManager == null)
+            return;
+
+        // 先取消再订阅，避免重复订阅导致一次误操作触发多次
+        trainingManager.OnWrongOperation -= HandleWrongOperation;
+        trainingManager.OnWrongOperation += HandleWrongOperation;
+    }
+
+    private void UnsubscribeTrainingEvents()
+    {
+        if (trainingManager == null)
+            return;
+
+        trainingManager.OnWrongOperation -= HandleWrongOperation;
+    }
+
+    /// <summary>
+    /// 收到误操作事件：显示提示并重新计时（新提示会覆盖旧提示的倒计时）。
+    /// </summary>
+    private void HandleWrongOperation(int expectedStepIndex)
+    {
+        string stepName = SafeStepName(expectedStepIndex);
+        if (string.IsNullOrEmpty(stepName))
+            stepName = $"第 {expectedStepIndex + 1} 步";
+
+        ShowHint(hintPrefix + stepName);
+    }
+
+    private void ShowHint(string message)
+    {
+        if (hintText == null)
+            return;
+
+        SetText(hintText, message);
+        hintHideTime = Time.time + Mathf.Max(0.1f, hintDuration);
+    }
+
+    /// <summary>提示到期后清空。只在到点那一帧写一次，不做每帧赋值。</summary>
+    private void UpdateHintVisibility()
+    {
+        if (hintText == null || hintHideTime <= 0f)
+            return;
+
+        if (Time.time < hintHideTime)
+            return;
+
+        hintHideTime = 0f;
+        SetText(hintText, string.Empty);
     }
 
     private void Update()
@@ -60,6 +130,8 @@ public class TrainingTaskPanelUI : MonoBehaviour
 
         if (index != lastStepIndex || allCompleted != lastAllCompleted)
             Refresh();
+
+        UpdateHintVisibility();
     }
 
     /// <summary>立即刷新一次，可在 Inspector 右键菜单里手动触发验证。</summary>
