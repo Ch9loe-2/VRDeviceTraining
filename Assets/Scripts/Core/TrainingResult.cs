@@ -25,6 +25,28 @@ public class TrainingResult
     /// <summary>完成时刻的 Time.time 绝对值，仅用于调试与展示。</summary>
     public float completionTime;
 
+    /// <summary>本轮最终评分（0~100）。只在完成时有意义，未完成时为 0。</summary>
+    private int score;
+
+    /// <summary>本轮评价等级。只在完成时有意义，未完成时为 null。</summary>
+    private string grade;
+
+    /// <summary>本轮最终评分（0~100）。未完成时为 0。</summary>
+    public int Score => score;
+
+    /// <summary>本轮评价等级。未完成时为 null。</summary>
+    public string Grade => grade;
+
+    /// <summary>
+    /// 写入评分结果。只在培训完成时由 TrainingManager 调用一次。
+    /// 生产周期：TrainingManager.BuildResult() → TrainingScoring → SetScore() → 广播给 UI。
+    /// </summary>
+    public void SetScore(int score, string grade)
+    {
+        this.score = score;
+        this.grade = grade;
+    }
+
     public TrainingResult()
     {
     }

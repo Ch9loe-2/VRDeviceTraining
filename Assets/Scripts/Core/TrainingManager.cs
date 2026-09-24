@@ -107,16 +107,27 @@ public class TrainingManager : MonoBehaviour
 
     /// <summary>
     /// 生成本轮结果快照。UI 只读这个返回值，不要自己推算耗时。
+    /// 在已完成的快照上额外计算评分（尚未完成时不计算，score/grade 保持默认值）。
     /// </summary>
     public TrainingResult BuildResult()
     {
-        return new TrainingResult(
+        float elapsed = completed ? elapsedSeconds : Time.time - startTime;
+
+        TrainingResult result = new TrainingResult(
             completed,
-            completed ? elapsedSeconds : Time.time - startTime,
+            elapsed,
             wrongOperationCount,
             resetCount,
             completionTime
         );
+
+        if (completed)
+        {
+            int score = TrainingScoring.CalculateScore(elapsed, wrongOperationCount, resetCount);
+            result.SetScore(score, TrainingScoring.GetGrade(score));
+        }
+
+        return result;
     }
 
     public void CompleteCurrentStep()
