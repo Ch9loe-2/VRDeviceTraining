@@ -13,7 +13,7 @@ namespace VRDeviceTraining.EditorTools
     /// </summary>
     public static class TaskPanelRebuilder
     {
-        private const string FontPath = "Assets/Fonts/Arial Unicode.ttf";
+        private const string FontPath = "Assets/Fonts/NotoSansSC-Regular.otf";
 
         private const string CanvasName = "TrainingCanvas";
         private const string PanelName = "TaskPanel";

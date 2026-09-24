@@ -200,7 +200,7 @@ public class TrainingTaskPanelUI : MonoBehaviour
 
         TrainingStep current = trainingManager.CurrentStep;
         if (current != null)
-            SetText(currentStepText, PrefixCurrentStep + current.stepName);
+            SetText(currentStepText, PrefixCurrentStep + current.StepName);
         else if (allCompleted)
             SetText(currentStepText, TextAllCompleted);
         else

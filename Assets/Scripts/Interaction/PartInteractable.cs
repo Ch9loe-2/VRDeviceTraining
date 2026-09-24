@@ -354,11 +354,8 @@ public class PartInteractable : MonoBehaviour
 
     private string DescribeRequiredStep()
     {
-        if (requiredStepIndex <= 0)
-            return "拆卸 Battery";
-
-        if (requiredStepIndex == 1)
-            return "拆卸后盖";
+        if (trainingManager != null)
+            return trainingManager.GetStepName(requiredStepIndex);
 
         return $"第 {requiredStepIndex + 1} 步";
     }

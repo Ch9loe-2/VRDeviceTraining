@@ -12,6 +12,14 @@ public class TrainingManager : MonoBehaviour
 
     public int TotalSteps => steps.Count;
 
+    /// <summary>获取指定步骤的名称。超出范围时返回兜底文字。</summary>
+    public string GetStepName(int stepIndex)
+    {
+        if (stepIndex >= 0 && stepIndex < steps.Count && steps[stepIndex] != null)
+            return steps[stepIndex].StepName;
+        return $"第 {stepIndex + 1} 步";
+    }
+
     /// <summary>
     /// 误操作事件。参数为「玩家尝试操作的那个零件所要求的步骤索引」（requiredStepIndex）。
     /// 只在玩家尝试操作非当前步骤的零件时触发，不改变任何步骤状态。
@@ -80,7 +88,7 @@ public class TrainingManager : MonoBehaviour
 
         BeginRound();
 
-        Debug.Log($"当前培训步骤：{CurrentStep.stepName}");
+        Debug.Log($"当前培训步骤：{CurrentStep.StepName}");
     }
 
     /// <summary>
@@ -116,12 +124,12 @@ public class TrainingManager : MonoBehaviour
         if (CurrentStep == null)
             return;
 
-        if (CurrentStep.completed)
+        if (CurrentStep.IsCompleted)
             return;
 
-        CurrentStep.completed = true;
+        CurrentStep.Complete();
 
-        Debug.Log($"【步骤完成】{CurrentStep.stepName}");
+        Debug.Log($"【步骤完成】{CurrentStep.StepName}");
 
         MoveToNextStep();
     }
@@ -134,7 +142,7 @@ public class TrainingManager : MonoBehaviour
     public void RecordWrongOperation(int expectedStepIndex)
     {
         string stepLabel = (expectedStepIndex >= 0 && expectedStepIndex < steps.Count)
-            ? steps[expectedStepIndex].stepName
+            ? steps[expectedStepIndex].StepName
             : $"第 {expectedStepIndex + 1} 步";
 
         Debug.Log($"【误操作】玩家尝试操作了非当前步骤的零件，应先完成：{stepLabel}（当前步骤索引 {currentStepIndex}）");
@@ -174,7 +182,7 @@ public class TrainingManager : MonoBehaviour
             return;
         }
 
-        Debug.Log($"【下一步】{CurrentStep.stepName}");
+        Debug.Log($"【下一步】{CurrentStep.StepName}");
     }
 
     /// <summary>
@@ -190,7 +198,7 @@ public class TrainingManager : MonoBehaviour
         for (int i = 0; i < steps.Count; i++)
         {
             if (steps[i] != null)
-                steps[i].completed = false;
+                steps[i].Reset();
         }
 
         currentStepIndex = 0;
