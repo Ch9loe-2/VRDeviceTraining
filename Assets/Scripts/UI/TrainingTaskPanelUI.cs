@@ -46,9 +46,6 @@ public class TrainingTaskPanelUI : MonoBehaviour
     [Tooltip("任务标题，一般不需要改动")]
     [SerializeField] private string taskTitle = "设备拆装培训";
 
-    [Tooltip("已废弃：步骤名称统一从 TrainingManager.GetStepName() 读取。此字段仅为兼容旧场景序列化数据而保留，运行时不再使用，也不需要维护。")]
-    [SerializeField] private string[] stepNames = { };
-
     private const string PrefixCurrentStep = "当前步骤：";
     private const string TextAllCompleted = "当前步骤：培训已完成";
     private const string SuffixCompleted = " [已完成]";
@@ -274,7 +271,7 @@ public class TrainingTaskPanelUI : MonoBehaviour
 
     /// <summary>
     /// 步骤名称的唯一数据源：TrainingManager。
-    /// 不再读取本组件自己的 stepNames，避免 UI 与 TrainingManager 各存一份步骤名而产生漂移。
+    /// 步骤名唯一来源是 TrainingManager，本组件不持有步骤名称副本。
     /// TrainingManager.GetStepName() 对越界索引会返回「第 N 步」兜底，不会返回 null。
     /// </summary>
     private string SafeStepName(int index)
