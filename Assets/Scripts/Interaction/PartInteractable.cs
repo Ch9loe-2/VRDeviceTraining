@@ -12,7 +12,7 @@ using UnityEngine.XR.Interaction.Toolkit;
 public class PartInteractable : MonoBehaviour
 {
     [Header("零件信息")]
-    [SerializeField] private string partName = "Battery";
+    [SerializeField] private string partName = "Part";
 
     [Header("拆卸判定")]
     [SerializeField] private float detachDistance = 0.5f;
@@ -21,7 +21,7 @@ public class PartInteractable : MonoBehaviour
     [SerializeField] private TrainingManager trainingManager;
 
     [Header("流程顺序")]
-    [Tooltip("该零件属于第几步（从 0 开始）。Battery = 0，BackCover = 1。")]
+    [Tooltip("该零件对应的训练步骤索引（从 0 开始）。只有 TrainingManager 的当前步骤等于该索引时，本零件才允许被抓取并推进流程。")]
     [SerializeField] private int requiredStepIndex = 0;
 
     private Vector3 originalPosition;

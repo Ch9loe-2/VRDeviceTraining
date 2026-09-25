@@ -37,8 +37,8 @@ public class TrainingTaskPanelUI : MonoBehaviour
     [Tooltip("任务标题，一般不需要改动")]
     [SerializeField] private string taskTitle = "设备拆装培训";
 
-    [Tooltip("步骤显示名。TrainingManager 里只配置了 2 步时，这里仍可按顺序填 3 个，第 3 行会显示为待完成")]
-    [SerializeField] private string[] stepNames = { "拆卸 Battery", "拆卸后盖", "拆卸主板" };
+    [Tooltip("已废弃：步骤名称统一从 TrainingManager.GetStepName() 读取。此字段仅为兼容旧场景序列化数据而保留，运行时不再使用，也不需要维护。")]
+    [SerializeField] private string[] stepNames = { };
 
     private const string PrefixCurrentStep = "当前步骤：";
     private const string TextAllCompleted = "当前步骤：培训已完成";
@@ -209,8 +209,21 @@ public class TrainingTaskPanelUI : MonoBehaviour
         if (stepTexts == null || stepTexts.Length == 0)
             stepTexts = new[] { step1Text, step2Text, step3Text };
 
+        // 以 TrainingManager 的实际步骤数量为准；超出的行清空并隐藏，
+        // 避免出现永远停在"待完成"的幽灵行（例如 steps 只有 2 步时的第 3 行）。
+        int stepCount = trainingManager.TotalSteps;
+
         for (int i = 0; i < stepTexts.Length; i++)
         {
+            Text row = stepTexts[i];
+
+            if (i >= stepCount)
+            {
+                SetText(row, string.Empty);
+                SetRowVisible(row, false);
+                continue;
+            }
+
             string state;
             if (i < index)
                 state = SuffixCompleted;
@@ -219,7 +232,8 @@ public class TrainingTaskPanelUI : MonoBehaviour
             else
                 state = SuffixPending;
 
-            SetText(stepTexts[i], (i + 1) + ". " + SafeStepName(i) + state);
+            SetText(row, (i + 1) + ". " + SafeStepName(i) + state);
+            SetRowVisible(row, true);
         }
     }
 
@@ -234,11 +248,30 @@ public class TrainingTaskPanelUI : MonoBehaviour
                && trainingManager.CurrentStepIndex > 0;
     }
 
+    /// <summary>
+    /// 步骤名称的唯一数据源：TrainingManager。
+    /// 不再读取本组件自己的 stepNames，避免 UI 与 TrainingManager 各存一份步骤名而产生漂移。
+    /// TrainingManager.GetStepName() 对越界索引会返回「第 N 步」兜底，不会返回 null。
+    /// </summary>
     private string SafeStepName(int index)
     {
-        if (stepNames == null || index < 0 || index >= stepNames.Length)
+        if (trainingManager == null || index < 0)
             return string.Empty;
-        return string.IsNullOrEmpty(stepNames[index]) ? string.Empty : stepNames[index];
+
+        return trainingManager.GetStepName(index);
+    }
+
+    /// <summary>
+    /// 显示 / 隐藏某一行步骤文本。
+    /// 只切换该行 Text 组件自身的启用状态，不移动、不重建、不改动布局与父对象。
+    /// </summary>
+    private static void SetRowVisible(Text row, bool visible)
+    {
+        if (row == null)
+            return;
+
+        if (row.enabled != visible)
+            row.enabled = visible;
     }
 
     private static void SetText(Text target, string value)
