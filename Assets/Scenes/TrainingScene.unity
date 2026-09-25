@@ -612,10 +612,6 @@ MonoBehaviour:
   hintPrefix: "\u8BF7\u5148\u5B8C\u6210\uFF1A"
   resetButton: {fileID: 840242056}
   taskTitle: "\u8BBE\u5907\u62C6\u88C5\u57F9\u8BAD"
-  stepNames:
-  - "\u62C6\u5378 Battery"
-  - "\u62C6\u5378\u540E\u76D6"
-  - "\u62C6\u5378\u4E3B\u677F"
 --- !u!114 &22876769
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4474,10 +4470,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   steps:
   - stepName: "\u62C6\u5378 Battery"
-    description: "\u5C06 Battery \u4ECE\u8BBE\u5907\u4E3B\u4F53\u4E0A\u62C6\u4E0B\u3002"
     completed: 0
   - stepName: "\u62C6\u5378\u540E\u76D6"
-    description: "\u62C6\u4E0B\u8BBE\u5907\u540E\u76D6\u3002\n"
     completed: 0
   wrongOperationCooldown: 0.3
 --- !u!4 &2022842901
