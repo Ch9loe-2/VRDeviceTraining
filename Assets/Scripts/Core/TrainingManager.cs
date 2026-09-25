@@ -130,6 +130,12 @@ public class TrainingManager : MonoBehaviour
         return result;
     }
 
+    /// <summary>读取最近一次保存的培训结果（无则返回 null）。不改变当前训练状态。</summary>
+    public TrainingResult LoadLastResult()
+    {
+        return TrainingResultPersistence.LoadLast();
+    }
+
     public void CompleteCurrentStep()
     {
         if (CurrentStep == null)
@@ -189,7 +195,9 @@ public class TrainingManager : MonoBehaviour
             Debug.Log("【培训完成】所有步骤已经完成。");
             Debug.Log($"【培训结果】耗时 {elapsedSeconds:0.0} 秒，错误操作 {wrongOperationCount} 次，累计重置 {resetCount} 次");
 
-            OnTrainingCompleted?.Invoke(BuildResult());
+            TrainingResult result = BuildResult();
+            OnTrainingCompleted?.Invoke(result);
+            TrainingResultPersistence.Save(result);
             return;
         }
 
