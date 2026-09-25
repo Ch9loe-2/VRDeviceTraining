@@ -9,8 +9,13 @@ namespace VRDeviceTraining.EditorTools
     /// 重建任务面板 UI（Legacy UnityEngine.UI.Text）。
     /// 全程只使用 Unity Editor API 操作当前打开的场景，不解析/不书写 .unity YAML。
     /// 只触碰 TrainingCanvas / TaskPanel 及其文字子对象，
-    /// 重建后自动重新绑定 TrainingTaskPanelUI 的 5 个受管文本引用，
+    /// 重建后自动重新绑定 TrainingTaskPanelUI 的受管引用，
     /// 不修改 XR Origin、控制器、TrainingDevice、零件对象、TrainingManager、Input Actions。
+    ///
+    /// M26.1：不再创建固定的 Step1Text / Step2Text / Step3Text。
+    /// 改为创建「StepList 容器 + StepRowTemplate 行模板」，
+    /// 步骤行由 TrainingTaskPanelUI 在运行时按 TrainingManager.TotalSteps 动态生成。
+    /// 场景中若仍残留旧版固定三行，会在重建时按名字精确删除（不影响 HintText / ResetButton）。
     /// </summary>
     public static class TaskPanelRebuilder
     {
@@ -19,20 +24,40 @@ namespace VRDeviceTraining.EditorTools
         private const string CanvasName = "TrainingCanvas";
         private const string PanelName = "TaskPanel";
 
-        // Rebuilder 自己创建、并负责自动重绑的文字对象（按名字精确管理）。
+        // StepList：步骤行容器（运行时往里生成行）。
+        // StepRowTemplate：行模板（挂在 StepList 下，只用于复制）。
+        private const string ListName = "StepList";
+        private const string RowTemplateName = "StepRowTemplate";
+
+        // Rebuilder 自己创建、并负责自动重绑的对象（TaskPanel 直接子对象，按名字精确管理）。
         // TaskPanel 下的其他子对象一律不删，否则会连带破坏
         // TrainingTaskPanelUI 上已有的 SerializedField 引用。
-        private static readonly string[] ManagedTextNames =
-            { "TaskTitle", "CurrentStepText", "Step1Text", "Step2Text", "Step3Text" };
+        private static readonly string[] ManagedRootNames =
+            { "TaskTitle", "CurrentStepText", "StepList" };
+
+        // M26.1 起废弃的旧版固定步骤行。场景里若还残留，重建时按名字精确删除。
+        // 运行时已不再使用它们，留着只会让人误以为步骤上限是 3 行。
+        private static readonly string[] LegacyStepTextNames =
+            { "Step1Text", "Step2Text", "Step3Text" };
 
         // 不属于 Rebuilder 管理、重建后必须仍然存在、且绑定必须保持原样的对象。
         // 不检查它们的文字与配置，只要求在重建中存活下来。
         private static readonly string[] PreservedNames = { "HintText", "ResetButton" };
 
-        // TrainingTaskPanelUI 上与 ManagedTextNames 一一对应的 SerializedField 名。
-        // 只写这 5 个字段，hintText / resetButton 保持原样。
-        private static readonly string[] PanelUiTextProperties =
-            { "taskTitleText", "currentStepText", "step1Text", "step2Text", "step3Text" };
+        // ===== TrainingTaskPanelUI 的引用自动重绑表 =====
+        // 字段 -> 目标对象在 TaskPanel 下的路径；isText 决定取 Text 还是 RectTransform。
+        private static readonly string[] BoundPropertyNames =
+            { "taskTitleText", "currentStepText", "stepListContainer", "stepRowTemplate" };
+
+        private static readonly string[][] BoundObjectPaths =
+        {
+            new[] { "TaskTitle" },
+            new[] { "CurrentStepText" },
+            new[] { "StepList" },
+            new[] { "StepList", "StepRowTemplate" },
+        };
+
+        private static readonly bool[] BoundAsText = { true, true, false, true };
 
         // 纯中文 + ASCII 数字 + 英文 + 标点，不含任何图标 / emoji / 特殊 Unicode
         //
@@ -41,9 +66,13 @@ namespace VRDeviceTraining.EditorTools
         // 因此这里不写任何具体训练步骤名称（避免把业务步骤名固化到工具里）。
         private const string TextTaskTitle = "设备拆装培训";
         private const string TextCurrentStep = "当前步骤：待开始";
-        private const string TextStep1 = "1. 待配置";
-        private const string TextStep2 = "2. 待配置";
-        private const string TextStep3 = "3. 待配置";
+        private const string TextStepRowTemplate = "待配置";
+
+        // 步骤行几何：与 TrainingTaskPanelUI 中的常量保持一致。
+        private const float RowHeight = 34f;
+        private const float RowSpacing = 4f;
+        private const int BaselineRowCount = 3;
+        private const float StepListTopOffset = -118f;
 
         [MenuItem("VRDeviceTraining/重建任务面板 UI", false, 100)]
         public static void Rebuild()
@@ -79,7 +108,7 @@ namespace VRDeviceTraining.EditorTools
             if (canvasGO.GetComponent<GraphicRaycaster>() == null)
                 Undo.AddComponent<GraphicRaycaster>(canvasGO);
 
-            // ---------- B. 清空 TaskPanel 下的任务文字对象 ----------
+            // ---------- B. 清空 TaskPanel 下的受管对象 ----------
             GameObject panelGO = FindChildExact(canvasGO.transform, PanelName);
             if (panelGO == null)
             {
@@ -88,8 +117,9 @@ namespace VRDeviceTraining.EditorTools
                 panelGO.transform.SetParent(canvasGO.transform, false);
             }
 
-            // B-1 只删除 Rebuilder 自己管理的 5 个文字对象（按名字精确匹配，同名重复对象也一并清理）。
-            // 不再删除 TaskPanel 的全部子对象：HintText / ResetButton 等由其它流程配置，
+            // B-1 只删除 Rebuilder 自己管理的对象 + 已废弃的旧版固定步骤行
+            // （按名字精确匹配 TaskPanel 的直接子对象，同名重复对象也一并清理）。
+            // 其余子对象（HintText / ResetButton 等）一律保留：
             // 删掉它们会让 TrainingTaskPanelUI 的 hintText / resetButton 引用失效，
             // 而这类引用无法用本工具自动恢复（它不负责创建这两个对象）。
             int removedChildren = 0;
@@ -97,7 +127,7 @@ namespace VRDeviceTraining.EditorTools
             {
                 Transform child = panelGO.transform.GetChild(i);
                 if (child == null) continue;
-                if (!IsManagedName(child.name)) continue;
+                if (!IsManagedName(child.name) && !IsLegacyStepTextName(child.name)) continue;
 
                 removedChildren++;
                 Undo.DestroyObjectImmediate(child.gameObject);
@@ -151,17 +181,15 @@ namespace VRDeviceTraining.EditorTools
             }
             Debug.Log("[任务面板] 使用字体：" + FontPath + " (fontName=" + font.name + ")");
 
-            // ---------- C. 重新创建 5 个 Legacy Text ----------
+            // ---------- C. 重新创建受管 UI ----------
             CreateText(panelGO.transform, "TaskTitle", TextTaskTitle, -18f, 42f, 34, FontStyle.Bold, Color.white);
             CreateText(panelGO.transform, "CurrentStepText", TextCurrentStep, -66f, 36f, 26, FontStyle.Bold, new Color(1f, 0.82f, 0.4f));
-            CreateText(panelGO.transform, "Step1Text", TextStep1, -118f, 34f, 24, FontStyle.Normal, Color.white);
-            CreateText(panelGO.transform, "Step2Text", TextStep2, -156f, 34f, 24, FontStyle.Normal, Color.white);
-            CreateText(panelGO.transform, "Step3Text", TextStep3, -194f, 34f, 24, FontStyle.Normal, Color.white);
+            CreateStepList(panelGO.transform, font);
 
-            // ---------- C-2. 自动重新绑定 TrainingTaskPanelUI 的文本引用 ----------
-            // 上面销毁并重建了 5 个 Text，fileID 已变化，旧引用会失效。
-            // 这里用 SerializedObject 把新 Text 写回组件，避免每次重建都要手工拖拽。
-            // 只写 5 个受管字段，hintText / resetButton 保持原样不动。
+            // ---------- C-2. 自动重新绑定 TrainingTaskPanelUI 的引用 ----------
+            // 上面销毁并重建了受管对象，fileID 已变化，旧引用会失效。
+            // 这里用 SerializedObject 把新对象写回组件，避免每次重建都要手工拖拽。
+            // 只写 BoundPropertyNames 列出的字段，hintText / resetButton 保持原样不动。
             RebindTaskPanelUIReferences(canvasGO, panelGO);
 
             // ---------- G. 保存 ----------
@@ -208,6 +236,68 @@ namespace VRDeviceTraining.EditorTools
             return go;
         }
 
+        /// <summary>
+        /// 创建步骤行容器 StepList（带 VerticalLayoutGroup）与行模板 StepRowTemplate。
+        /// 步骤行本身不在编辑态创建，由 TrainingTaskPanelUI 在运行时按步骤数生成。
+        /// </summary>
+        private static GameObject CreateStepList(Transform panel, Font font)
+        {
+            float baselineHeight = BaselineRowCount * RowHeight + (BaselineRowCount - 1) * RowSpacing;
+
+            var listGO = new GameObject(ListName, typeof(RectTransform));
+            Undo.RegisterCreatedObjectUndo(listGO, "Create " + ListName);
+            listGO.layer = LayerMask.NameToLayer("UI");
+            listGO.transform.SetParent(panel, false);
+
+            var rect = listGO.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(20f, StepListTopOffset);
+            rect.sizeDelta = new Vector2(-40f, baselineHeight);
+            rect.localScale = Vector3.one;
+            rect.localRotation = Quaternion.identity;
+
+            var group = Undo.AddComponent<VerticalLayoutGroup>(listGO);
+            group.padding = new RectOffset(0, 0, 0, 0);
+            group.spacing = RowSpacing;
+            group.childAlignment = TextAnchor.UpperLeft;
+            group.childControlWidth = true;
+            group.childControlHeight = false;
+            group.childForceExpandWidth = false;
+            group.childForceExpandHeight = false;
+
+            // 行模板：只提供外观，运行时被复制。
+            var rowGO = new GameObject(RowTemplateName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(rowGO, "Create " + RowTemplateName);
+            rowGO.layer = LayerMask.NameToLayer("UI");
+            rowGO.transform.SetParent(listGO.transform, false);
+
+            var rowRect = rowGO.GetComponent<RectTransform>();
+            rowRect.anchorMin = new Vector2(0f, 1f);
+            rowRect.anchorMax = new Vector2(1f, 1f);
+            rowRect.pivot = new Vector2(0f, 1f);
+            rowRect.anchoredPosition = new Vector2(0f, 0f);
+            rowRect.sizeDelta = new Vector2(0f, RowHeight);
+            rowRect.localScale = Vector3.one;
+            rowRect.localRotation = Quaternion.identity;
+
+            var rowText = rowGO.GetComponent<Text>();
+            rowText.font = font;
+            rowText.text = TextStepRowTemplate;
+            rowText.fontSize = 24;
+            rowText.fontStyle = FontStyle.Normal;
+            rowText.color = Color.white;
+            rowText.alignment = TextAnchor.MiddleLeft;
+            rowText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            rowText.verticalOverflow = VerticalWrapMode.Overflow;
+            rowText.supportRichText = false;
+            rowText.raycastTarget = false;
+            rowText.lineSpacing = 1f;
+
+            return listGO;
+        }
+
         private static int RemoveTextMeshProComponents(GameObject root)
         {
             int count = 0;
@@ -230,8 +320,15 @@ namespace VRDeviceTraining.EditorTools
 
         private static bool IsManagedName(string name)
         {
-            for (int i = 0; i < ManagedTextNames.Length; i++)
-                if (ManagedTextNames[i] == name) return true;
+            for (int i = 0; i < ManagedRootNames.Length; i++)
+                if (ManagedRootNames[i] == name) return true;
+            return false;
+        }
+
+        private static bool IsLegacyStepTextName(string name)
+        {
+            for (int i = 0; i < LegacyStepTextNames.Length; i++)
+                if (LegacyStepTextNames[i] == name) return true;
             return false;
         }
 
@@ -256,8 +353,8 @@ namespace VRDeviceTraining.EditorTools
         }
 
         /// <summary>
-        /// 把刚创建的 5 个 Text 重新绑定到 TrainingTaskPanelUI 上。
-        /// 只写 PanelUiTextProperties 列出的 5 个字段，不碰 hintText / resetButton。
+        /// 把刚创建的对象重新绑定到 TrainingTaskPanelUI 上。
+        /// 只写 BoundPropertyNames 列出的字段，不碰 hintText / resetButton。
         /// </summary>
         private static void RebindTaskPanelUIReferences(GameObject canvasGO, GameObject panelGO)
         {
@@ -269,26 +366,28 @@ namespace VRDeviceTraining.EditorTools
             }
 
             var so = new SerializedObject(panelUI);
+            int bound = 0;
 
-            for (int i = 0; i < PanelUiTextProperties.Length; i++)
+            for (int i = 0; i < BoundPropertyNames.Length; i++)
             {
-                string propertyName = PanelUiTextProperties[i];
-                string objectName = ManagedTextNames[i];
+                GameObject target = ResolveDescendant(panelGO.transform, BoundObjectPaths[i]);
 
-                GameObject target = FindChildExact(panelGO.transform, objectName);
-                Text targetText = target != null ? target.GetComponent<Text>() : null;
+                Component value = null;
+                if (target != null)
+                    value = BoundAsText[i] ? (Component)target.GetComponent<Text>() : target.GetComponent<RectTransform>();
 
-                BindTextProperty(so, propertyName, targetText, objectName);
+                if (BindReference(so, BoundPropertyNames[i], value, DescribePath(BoundObjectPaths[i])))
+                    bound++;
             }
 
             so.ApplyModifiedProperties();
 
-            Debug.Log("[任务面板] 已自动重新绑定 TrainingTaskPanelUI 的 " + PanelUiTextProperties.Length +
-                      " 个文本引用（hintText / resetButton 未改动）。");
+            Debug.Log("[任务面板] 已自动重新绑定 TrainingTaskPanelUI 的 " + bound +
+                      " 个引用（hintText / resetButton 未改动）。");
         }
 
-        private static bool BindTextProperty(SerializedObject so, string propertyName,
-                                             Text value, string expectedObjectName)
+        private static bool BindReference(SerializedObject so, string propertyName,
+                                          Component value, string expectedObjectName)
         {
             var prop = so.FindProperty(propertyName);
             if (prop == null)
@@ -306,6 +405,24 @@ namespace VRDeviceTraining.EditorTools
 
             prop.objectReferenceValue = value;
             return true;
+        }
+
+        private static GameObject ResolveDescendant(Transform root, string[] path)
+        {
+            Transform current = root;
+            for (int i = 0; i < path.Length; i++)
+            {
+                if (current == null) return null;
+                GameObject next = FindChildExact(current, path[i]);
+                if (next == null) return null;
+                current = next.transform;
+            }
+            return current != null ? current.gameObject : null;
+        }
+
+        private static string DescribePath(string[] path)
+        {
+            return string.Join("/", path);
         }
 
         private static GameObject FindSingleRoot(string name)
@@ -337,35 +454,34 @@ namespace VRDeviceTraining.EditorTools
             // 只验证结构与字体，不再校验文本具体内容：
             // 这些文本都是编辑期占位内容，运行时由 TrainingTaskPanelUI.Refresh()
             // 依据 TrainingManager 的步骤生成并覆盖。这里若校验文本，
-            // 就会把具体训练步骤名重新写死回工具里（M25.4-3-1 要消除的正是这点）。
-            string[] names = ManagedTextNames;
-
+            // 就会把具体训练步骤名重新写死回工具里。
             bool ok = true;
 
-            // 1 / 2 / 4 / 5
-            for (int i = 0; i < names.Length; i++)
+            // 1. 文字类受管对象：TaskTitle / CurrentStepText
+            string[] textNames = { "TaskTitle", "CurrentStepText" };
+            for (int i = 0; i < textNames.Length; i++)
             {
-                var go = FindChildExact(panelGO.transform, names[i]);
+                var go = FindChildExact(panelGO.transform, textNames[i]);
                 if (go == null)
                 {
-                    Debug.LogError("[任务面板] 缺失对象：" + names[i]);
+                    Debug.LogError("[任务面板] 缺失对象：" + textNames[i]);
                     ok = false;
                     continue;
                 }
                 var txt = go.GetComponent<Text>();
                 if (txt == null)
                 {
-                    Debug.LogError("[任务面板] " + names[i] + " 上没有 UnityEngine.UI.Text");
+                    Debug.LogError("[任务面板] " + textNames[i] + " 上没有 UnityEngine.UI.Text");
                     ok = false;
                     continue;
                 }
                 bool fontOk = txt.font == expectedFont;
                 if (!fontOk)
                 {
-                    Debug.LogError("[任务面板] 字体不符：" + names[i] + " font=" + (txt.font != null ? txt.font.name : "null"));
+                    Debug.LogError("[任务面板] 字体不符：" + textNames[i] + " font=" + (txt.font != null ? txt.font.name : "null"));
                     ok = false;
                 }
-                Debug.Log("[任务面板] " + names[i] +
+                Debug.Log("[任务面板] " + textNames[i] +
                           " | type=" + txt.GetType().FullName +
                           " | size=" + txt.fontSize +
                           " | style=" + txt.fontStyle +
@@ -375,7 +491,74 @@ namespace VRDeviceTraining.EditorTools
                           (fontOk ? " | OK" : " | FAIL"));
             }
 
-            // 1b. 非 Rebuilder 管理的对象必须仍然保留。
+            // 2. StepList：必须有 RectTransform + VerticalLayoutGroup
+            var listGO = FindChildExact(panelGO.transform, ListName);
+            if (listGO == null)
+            {
+                Debug.LogError("[任务面板] 缺失对象：" + ListName);
+                ok = false;
+            }
+            else
+            {
+                var group = listGO.GetComponent<VerticalLayoutGroup>();
+                bool groupOk = group != null;
+                if (!groupOk)
+                {
+                    Debug.LogError("[任务面板] " + ListName + " 上缺少 VerticalLayoutGroup");
+                    ok = false;
+                }
+                Debug.Log("[任务面板] " + ListName + " | VerticalLayoutGroup=" +
+                          (groupOk ? "有 (spacing=" + group.spacing + ")" : "缺失") +
+                          (groupOk ? " | OK" : " | FAIL"));
+            }
+
+            // 3. StepRowTemplate：必须是 StepList 的子对象，且带 Text + 正确字体
+            GameObject rowGO = listGO != null
+                ? FindChildExact(listGO.transform, RowTemplateName)
+                : null;
+            if (rowGO == null)
+            {
+                Debug.LogError("[任务面板] 缺失对象：" + ListName + "/" + RowTemplateName);
+                ok = false;
+            }
+            else
+            {
+                var rowText = rowGO.GetComponent<Text>();
+                if (rowText == null)
+                {
+                    Debug.LogError("[任务面板] " + RowTemplateName + " 上没有 UnityEngine.UI.Text");
+                    ok = false;
+                }
+                else
+                {
+                    bool fontOk = rowText.font == expectedFont;
+                    if (!fontOk)
+                    {
+                        Debug.LogError("[任务面板] 字体不符：" + RowTemplateName + " font=" + (rowText.font != null ? rowText.font.name : "null"));
+                        ok = false;
+                    }
+                    Debug.Log("[任务面板] " + RowTemplateName +
+                              " | size=" + rowText.fontSize +
+                              " | text=[" + rowText.text + "]" +
+                              " | hex=" + ToHex(rowText.text) +
+                              " | font=" + (rowText.font != null ? rowText.font.name : "null") +
+                              (fontOk ? " | OK" : " | FAIL"));
+                }
+            }
+
+            // 4. 旧版固定步骤行必须已经不存在（M26.1 起废弃）
+            for (int i = 0; i < LegacyStepTextNames.Length; i++)
+            {
+                var legacy = FindChildExact(panelGO.transform, LegacyStepTextNames[i]);
+                if (legacy != null)
+                {
+                    Debug.LogError("[任务面板] 旧版固定步骤行仍存在：" + LegacyStepTextNames[i]);
+                    ok = false;
+                }
+            }
+            Debug.Log("[任务面板] 旧版固定步骤行（Step1/2/3Text）检查完毕。");
+
+            // 5. 非 Rebuilder 管理的对象必须仍然保留。
             // 只校验存在性：它们不是本工具创建的，也不要求改动其文字或配置。
             for (int i = 0; i < PreservedNames.Length; i++)
             {
@@ -389,7 +572,7 @@ namespace VRDeviceTraining.EditorTools
                 Debug.Log("[任务面板] " + PreservedNames[i] + " 已保留 | OK");
             }
 
-            // 3. TMP 数量 = 0
+            // 6. TMP 数量 = 0
             int tmpCount = 0;
             foreach (var c in canvasGO.GetComponentsInChildren<Component>(true))
             {
@@ -400,7 +583,7 @@ namespace VRDeviceTraining.EditorTools
             Debug.Log("[任务面板] Canvas 子树内 TextMeshPro 组件数量 = " + tmpCount + (tmpCount == 0 ? " | OK" : " | FAIL"));
             if (tmpCount != 0) ok = false;
 
-            // 6. 无重复对象 / 无带空格名字
+            // 7. 无重复对象 / 无带空格名字
             var descs = canvasGO.GetComponentsInChildren<Transform>(true);
             int duplicates = 0, badNames = 0;
             for (int i = 0; i < descs.Length; i++)
@@ -414,7 +597,7 @@ namespace VRDeviceTraining.EditorTools
                       ((duplicates == 0 && badNames == 0) ? " | OK" : " | FAIL"));
             if (duplicates != 0 || badNames != 0) ok = false;
 
-            // 7 / 8 / 9. 未被脚本触碰的对象仍然存在
+            // 8. 未被脚本触碰的对象仍然存在
             // 不再按具体零件名逐个写死，只校验系统级对象。
             string[] untouched = { "TrainingManager", "XR Origin (XR Rig)", "TrainingDevice" };
             foreach (var n in untouched)
@@ -428,7 +611,7 @@ namespace VRDeviceTraining.EditorTools
                 Debug.Log("[任务面板] 未触碰对象 " + n + " : " + (go != null ? "存在，未被修改" : "未找到（请确认场景）"));
             }
 
-            // 10. 通用零件存在性检查：按组件类型统计，不依赖任何具体零件名。
+            // 9. 通用零件存在性检查：按组件类型统计，不依赖任何具体零件名。
             int partCount = 0;
             foreach (var part in Resources.FindObjectsOfTypeAll<PartInteractable>())
             {
@@ -439,7 +622,7 @@ namespace VRDeviceTraining.EditorTools
             Debug.Log("[任务面板] 场景中 PartInteractable 零件数量 = " + partCount +
                       (partCount > 0 ? " | OK" : " | 未发现零件（请确认场景是否包含零件对象）"));
 
-            // 11. TrainingTaskPanelUI 的 5 个文本引用必须指向上面那 5 个对象。
+            // 10. TrainingTaskPanelUI 的 4 个引用必须指向正确的对象。
             // 只做结构性检查，不校验任何业务文本内容。
             var panelUI = FindTaskPanelUI(canvasGO);
             if (panelUI == null)
@@ -451,10 +634,9 @@ namespace VRDeviceTraining.EditorTools
             {
                 var so = new SerializedObject(panelUI);
 
-                for (int i = 0; i < PanelUiTextProperties.Length; i++)
+                for (int i = 0; i < BoundPropertyNames.Length; i++)
                 {
-                    string propertyName = PanelUiTextProperties[i];
-                    string objectName = ManagedTextNames[i];
+                    string propertyName = BoundPropertyNames[i];
 
                     var prop = so.FindProperty(propertyName);
                     if (prop == null)
@@ -464,26 +646,29 @@ namespace VRDeviceTraining.EditorTools
                         continue;
                     }
 
-                    GameObject expectedGO = FindChildExact(panelGO.transform, objectName);
-                    Text expectedText = expectedGO != null ? expectedGO.GetComponent<Text>() : null;
-                    if (expectedText == null)
+                    GameObject expectedGO = ResolveDescendant(panelGO.transform, BoundObjectPaths[i]);
+                    Component expected = null;
+                    if (expectedGO != null)
+                        expected = BoundAsText[i] ? (Component)expectedGO.GetComponent<Text>() : expectedGO.GetComponent<RectTransform>();
+
+                    if (expected == null)
                     {
-                        Debug.LogError("[任务面板] 引用校验失败：找不到目标对象 " + objectName);
+                        Debug.LogError("[任务面板] 引用校验失败：找不到目标对象 " + DescribePath(BoundObjectPaths[i]));
                         ok = false;
                         continue;
                     }
 
-                    var actual = prop.objectReferenceValue as Text;
-                    bool boundOk = actual == expectedText;
+                    var actual = prop.objectReferenceValue;
+                    bool boundOk = actual == expected;
                     if (!boundOk)
                     {
                         Debug.LogError("[任务面板] 引用未绑定或指向错误：" + propertyName +
-                                       " 实际=" + (actual != null ? actual.gameObject.name : "null") +
-                                       " 期望=" + objectName);
+                                       " 实际=" + (actual != null ? actual.name : "null") +
+                                       " 期望=" + expected.name);
                         ok = false;
                     }
                     Debug.Log("[任务面板] 引用 " + propertyName + " -> " +
-                              (actual != null ? actual.gameObject.name : "null") +
+                              (actual != null ? actual.name : "null") +
                               (boundOk ? " | OK" : " | FAIL"));
                 }
             }
