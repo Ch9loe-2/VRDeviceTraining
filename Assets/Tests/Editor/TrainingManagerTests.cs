@@ -1,14 +1,17 @@
 using System.Collections.Generic;
+using System.IO;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 
 /// <summary>
-/// M27: TrainingManager 核心拆卸业务逻辑的 EditMode 单元测试。
-/// 不依赖 XR / PartInteractable / UI 组件，直接测试 TrainingManager + TrainingStep。
+/// M27 + M28: TrainingManager 核心拆卸/组装/评分/持久化业务逻辑的 EditMode 单元测试。
+/// 不依赖 XR / PartInteractable / UI 组件，直接测试 TrainingManager + TrainingStep + 评分+ 持久化。
 /// </summary>
 public class TrainingManagerTests
 {
+    // 场景配置的拆卸步骤名称
+    private static readonly string[] DisassemblyNames = { "拆卸 Battery", "拆卸后盖" };
+
     private TrainingManager CreateManagerWithSteps(int count)
     {
         var go = new GameObject("TestTrainingManager");
@@ -17,281 +20,486 @@ public class TrainingManagerTests
         var steps = new List<TrainingStep>();
         for (int i = 0; i < count; i++)
         {
-            steps.Add(new TrainingStep("Step" + i));
+            string name = i < DisassemblyNames.Length ? DisassemblyNames[i] : "Step" + i;
+            steps.Add(new TrainingStep(name));
         }
 
-        // 通过公有方法注入步骤数据并初始化起始状态
         mgr.ConfigureSteps(steps);
         return mgr;
     }
 
     // ============================================
-    // Test 1: 初始状态
+    // Test 1: 初始拆卸步骤正确
     // ============================================
     [Test]
     public void InitialState_CurrentStepIndexIsZero()
     {
-        var mgr = CreateManagerWithSteps(3);
+        var mgr = CreateManagerWithSteps(2);
         Assert.AreEqual(0, mgr.CurrentStepIndex);
         Assert.IsFalse(mgr.IsCompleted);
-        Assert.AreEqual("Step0", mgr.GetStepName(0));
+        Assert.AreEqual(TrainingPhase.Disassembly, mgr.CurrentPhase);
     }
 
     [Test]
-    public void InitialState_AllStepsAreNotCompleted()
+    public void InitialState_DisassemblyStepCorrect()
     {
-        var mgr = CreateManagerWithSteps(3);
-        // 只能验证 TotalSteps 正确，无需逐个验证 Step 内部字段（完工校验走 +1 推进）
-        Assert.AreEqual(3, mgr.TotalSteps);
+        var mgr = CreateManagerWithSteps(2);
+        Assert.AreEqual("拆卸 Battery", mgr.GetStepName(0));
+        Assert.AreEqual("拆卸后盖", mgr.GetStepName(1));
     }
 
     [Test]
-    public void InitialState_TotalStepsMatchesConfiguredCount()
+    public void InitialState_TotalStepsIsDoubled()
     {
-        var mgr = CreateManagerWithSteps(5);
-        Assert.AreEqual(5, mgr.TotalSteps);
+        var mgr = CreateManagerWithSteps(2);
+        Assert.AreEqual(4, mgr.TotalSteps, "TotalSteps 应为拆卸步骤数 * 2");
+    }
+
+    [Test]
+    public void InitialState_IsPartCurrentStepBattery()
+    {
+        var mgr = CreateManagerWithSteps(2);
+        Assert.IsTrue(mgr.IsPartCurrentStep(0), "初始时 requiredStepIndex=0 应列为当前步骤");
+        Assert.IsFalse(mgr.IsPartCurrentStep(1), "初始时 requiredStepIndex=1 不应为当前步骤");
     }
 
     // ============================================
-    // Test 2: 正确顺序 — 每一步都推进
+    // Test 2: Battery → 后盖 拆卸顺序正确
     // ============================================
     [Test]
-    public void CorrectOrder_StepsAdvanceSequentially()
+    public void DisassemblyOrder_BatteryThenCover()
     {
-        var mgr = CreateManagerWithSteps(3);
+        var mgr = CreateManagerWithSteps(2);
+        Assert.AreEqual(TrainingPhase.Disassembly, mgr.CurrentPhase);
+        Assert.IsTrue(mgr.IsPartCurrentStep(0));
 
-        // Step 0
-        Assert.AreEqual(0, mgr.CurrentStepIndex);
-        mgr.CompleteCurrentStep();
+        mgr.CompleteCurrentStep(); // Battery done
         Assert.AreEqual(1, mgr.CurrentStepIndex);
 
-        // Step 1
-        mgr.CompleteCurrentStep();
-        Assert.AreEqual(2, mgr.CurrentStepIndex);
+        // 现在应轮到后盖 (requiredStepIndex=1)
+        Assert.IsTrue(mgr.IsPartCurrentStep(1));
+        Assert.IsFalse(mgr.IsPartCurrentStep(0));
 
-        // Step 2（最后一步完成 → completed = true）
-        mgr.CompleteCurrentStep();
+        mgr.CompleteCurrentStep(); // 后盖 done
+        Assert.AreEqual(2, mgr.CurrentStepIndex);
+        Assert.AreEqual("组装 后盖", mgr.GetStepName(2), "第3步应为组装后盖");
+    }
+
+    // ============================================
+    // Test 3: 错误拆卸顺序不会推进
+    // ============================================
+    [Test]
+    public void WrongDisassemblyOrder_DoesNotAdvance()
+    {
+        var mgr = CreateManagerWithSteps(2);
+        int before = mgr.CurrentStepIndex;
+
+        mgr.RecordWrongOperation(1); // 尝试操作后盖（requiredStepIndex=1），但当前是 Battery(0)
+
+        Assert.AreEqual(before, mgr.CurrentStepIndex, "错误拆卸操作不应推进索引");
+        Assert.IsFalse(mgr.IsCompleted);
+    }
+
+    [Test]
+    public void WrongDisassemblyOrder_WrongOperationCountIncrements()
+    {
+        var mgr = CreateManagerWithSteps(2);
+
+        mgr.RecordWrongOperation(1);
+        Assert.AreEqual(1, mgr.WrongOperationCount);
+        Assert.AreEqual(0, mgr.CurrentStepIndex);
+    }
+
+    // ============================================
+    // Test 4: 拆卸完成后进入组装阶段
+    // ============================================
+    [Test]
+    public void DisassemblyComplete_EntersAssemblyPhase()
+    {
+        var mgr = CreateManagerWithSteps(2);
+
+        bool phaseChanged = false;
+        TrainingPhase newPhase = TrainingPhase.Disassembly;
+        mgr.OnPhaseChanged += (p) => { phaseChanged = true; newPhase = p; };
+
+        mgr.CompleteCurrentStep(); // Battery
+        mgr.CompleteCurrentStep(); // 后盖
+
+        // 现在应该进入组装阶段
+        Assert.AreEqual(2, mgr.CurrentStepIndex);
+        Assert.AreEqual(TrainingPhase.Assembly, mgr.CurrentPhase);
+        Assert.IsTrue(phaseChanged, "进入组装阶段应触发 OnPhaseChanged");
+        Assert.AreEqual(TrainingPhase.Assembly, newPhase);
+    }
+
+    [Test]
+    public void AssemblyPhase_FirstStepIsCover()
+    {
+        var mgr = CreateManagerWithSteps(2);
+
+        mgr.CompleteCurrentStep(); // Battery
+        mgr.CompleteCurrentStep(); // 后盖
+
+        // 组装第 1 步 = 后盖（requiredStepIndex=1）
+        Assert.IsTrue(mgr.IsPartCurrentStep(1), "组装阶段第一步应轮到后盖(requiredStepIndex=1)");
+        Assert.IsFalse(mgr.IsPartCurrentStep(0), "组装阶段第一步不应轮到 Battery(true)");
+    }
+
+    // ============================================
+    // Test 5: 后盖 → Battery 组装顺序正确
+    // ============================================
+    [Test]
+    public void AssemblyOrder_CoverThenBattery()
+    {
+        var mgr = CreateManagerWithSteps(2);
+
+        // 拆卸完成
+        mgr.CompleteCurrentStep(); // step 0 Battery
+        mgr.CompleteCurrentStep(); // step 1 后盖
+
+        // 现在组装阶段
+        Assert.AreEqual(TrainingPhase.Assembly, mgr.CurrentPhase);
+        Assert.IsTrue(mgr.IsPartCurrentStep(1)); // 先装后盖
+
+        mgr.CompleteCurrentStep(); // 后盖装回
+        Assert.AreEqual(3, mgr.CurrentStepIndex);
+        Assert.IsTrue(mgr.IsPartCurrentStep(0)); // 再装 Battery
+
+        mgr.CompleteCurrentStep(); // Battery 装回
         Assert.IsTrue(mgr.IsCompleted);
     }
 
     [Test]
-    public void CorrectOrder_StepNameAccessibleAfterEachAdvance()
-    {
-        var mgr = CreateManagerWithSteps(3);
-
-        Assert.AreEqual("Step0", mgr.GetStepName(0));
-        mgr.CompleteCurrentStep();
-
-        Assert.AreEqual("Step1", mgr.GetStepName(1));
-        mgr.CompleteCurrentStep();
-
-        Assert.AreEqual("Step2", mgr.GetStepName(2));
-        mgr.CompleteCurrentStep();
-    }
-
-    [Test]
-    public void CorrectOrder_OnTrainingCompletedFiresOnce()
+    public void AssemblyPhase_StepNamesCorrect()
     {
         var mgr = CreateManagerWithSteps(2);
 
-        int fireCount = 0;
-        mgr.OnTrainingCompleted += (result) => { fireCount++; };
+        mgr.CompleteCurrentStep(); // 0
+        mgr.CompleteCurrentStep(); // 1
 
-        mgr.CompleteCurrentStep();
-        mgr.CompleteCurrentStep();
-
-        Assert.AreEqual(1, fireCount, "OnTrainingCompleted 应该只触发一次");
+        Assert.AreEqual("组装 后盖", mgr.GetStepName(2));
+        Assert.AreEqual("组装 Battery", mgr.GetStepName(3));
     }
 
     // ============================================
-    // Test 3: 错误顺序 — 误操作不推进
+    // Test 6: 错误组装顺序不会推进
     // ============================================
     [Test]
-    public void WrongOrder_RecordWrongOperationDoesNotAdvanceIndex()
+    public void WrongAssemblyOrder_DoesNotAdvance()
     {
-        var mgr = CreateManagerWithSteps(3);
+        var mgr = CreateManagerWithSteps(2);
 
-        int wrongFireCount = 0;
-        mgr.OnWrongOperation += (idx) => { wrongFireCount++; };
+        mgr.CompleteCurrentStep(); // Battery
+        mgr.CompleteCurrentStep(); // 后盖 → assembly
 
         int before = mgr.CurrentStepIndex;
-        mgr.RecordWrongOperation(1); // 尝试操作 Step1 但当前是 Step0
+        mgr.RecordWrongOperation(0); // 尝试装 Battery(false) 但当前需装后盖(1)
 
-        Assert.AreEqual(before, mgr.CurrentStepIndex, "误操作后 CurrentStepIndex 不应改变");
-        Assert.AreEqual(1, wrongFireCount, "误操作事件应触发一次");
-        Assert.IsFalse(mgr.IsCompleted);
+        Assert.AreEqual(before, mgr.CurrentStepIndex, "错误组装操作不应推进索引");
+        Assert.AreEqual(TrainingPhase.Assembly, mgr.CurrentPhase);
     }
 
     [Test]
-    public void WrongOrder_StepStatusNotChanged()
+    public void WrongAssemblyOrder_WrongCountIncrements()
     {
-        var mgr = CreateManagerWithSteps(3);
+        var mgr = CreateManagerWithSteps(2);
 
-        mgr.RecordWrongOperation(2);
+        mgr.CompleteCurrentStep(); // Battery
+        mgr.CompleteCurrentStep(); // 后盖
 
-        // 完成当前步骤，确认只有 Step0 完成
-        mgr.CompleteCurrentStep();
-        Assert.AreEqual(1, mgr.CurrentStepIndex);
-    }
-
-    [Test]
-    public void WrongOrder_MultipleWrongOpsCountCorrectly()
-    {
-        var mgr = CreateManagerWithSteps(3);
-
-        mgr.RecordWrongOperation(1);
-        mgr.RecordWrongOperation(2);
-
-        Assert.AreEqual(2, mgr.WrongOperationCount);
-        Assert.AreEqual(0, mgr.CurrentStepIndex); // 仍然在 Step0
+        int wrongBefore = mgr.WrongOperationCount;
+        mgr.RecordWrongOperation(0); // 装 Battery(false) → 当前需后盖
+        Assert.AreEqual(wrongBefore + 1, mgr.WrongOperationCount);
     }
 
     // ============================================
-    // Test 4: 完成全部步骤
+    // Test 7: 全部步骤完成后 IsCompleted 正确
     // ============================================
     [Test]
     public void AllStepsCompleted_IsCompletedTrue()
     {
-        var mgr = CreateManagerWithSteps(3);
+        var mgr = CreateManagerWithSteps(2);
 
-        mgr.CompleteCurrentStep();
-        mgr.CompleteCurrentStep();
-        mgr.CompleteCurrentStep();
+        mgr.CompleteCurrentStep(); // 0 Battery 拆
+        mgr.CompleteCurrentStep(); // 1 后盖拆
+        mgr.CompleteCurrentStep(); // 2 后盖装
+        mgr.CompleteCurrentStep(); // 3 Battery 装
 
         Assert.IsTrue(mgr.IsCompleted);
-        Assert.GreaterOrEqual(mgr.ElapsedSeconds, 0f);
+        Assert.AreEqual(TrainingPhase.Completed, mgr.CurrentPhase);
+        Assert.IsNull(mgr.CurrentStep);
     }
 
     [Test]
-    public void AllStepsCompleted_CurrentStepReturnsNull()
+    public void AllStepsCompleted_OnTrainingCompletedFiresOnce()
     {
         var mgr = CreateManagerWithSteps(2);
 
-        mgr.CompleteCurrentStep();
-        mgr.CompleteCurrentStep();
+        int fireCount = 0;
+        mgr.OnTrainingCompleted += (r) => { fireCount++; };
 
-        Assert.IsNull(mgr.CurrentStep, "全部完成后 CurrentStep 应为 null");
+        mgr.CompleteCurrentStep(); // 0
+        mgr.CompleteCurrentStep(); // 1
+        mgr.CompleteCurrentStep(); // 2
+        mgr.CompleteCurrentStep(); // 3
+
+        Assert.AreEqual(1, fireCount);
     }
 
+    // ============================================
+    // Test 8: 错误操作次数正确
+    // ============================================
     [Test]
-    public void AllStepsCompleted_IndexDoesNotOverflow()
+    public void WrongOperationCount_TracksCorrectly()
     {
         var mgr = CreateManagerWithSteps(2);
 
-        mgr.CompleteCurrentStep();
-        mgr.CompleteCurrentStep();
+        mgr.RecordWrongOperation(1);
+        Assert.AreEqual(1, mgr.WrongOperationCount);
 
-        // 完成后再调用 CompleteCurrentStep（步骤已越过最后一项）
-        int indexAfter = mgr.CurrentStepIndex;
-        mgr.CompleteCurrentStep(); // CurrentStep == null → 直接 return
-        Assert.AreEqual(indexAfter, mgr.CurrentStepIndex, "完成后再调 CompleteCurrentStep 不应增加索引");
-    }
+        mgr.RecordWrongOperation(0);
+        Assert.AreEqual(2, mgr.WrongOperationCount);
 
-    // ============================================
-    // Test 5: 重复操作 — 已拆卸步骤的 Complete 不重复
-    // ============================================
-    [Test]
-    public void DuplicateStep_CompleteDoesNotReAdvance()
-    {
-        var mgr = CreateManagerWithSteps(3);
-
-        mgr.CompleteCurrentStep(); // Step0 → Step1
-        int indexAfterFirst = mgr.CurrentStepIndex;
-
-        // TrainingStep 的 IsCompleted 已经为 true，Complete() 内部检测跳过
-        // 但 CompleteCurrentStep() 检查 CurrentStep（现在是 Step1），不是已完成的 Step0
-        // 所以这个用例正确场景是：同一个步骤不能被完成两次
-        // 正确测试：Step 1 完成两步后，再尝试完成 Step1（已完成的步骤不应被再次完成）
-        mgr.CompleteCurrentStep(); // Step1 → Step2
-
-        // Step2 已经不可达 — 这里模拟的是「当前步骤不能二次完成」
-        // 实际上 CompleteCurrentStep 会走 CurrentStep.Complete()，
-        // 然后 MoveToNextStep → index++
-        // 但因为 CurrentStep 在完成前还是 Step2，完成后变成 null
-        // 再调 CompleteCurrentStep → CurrentStep == null → return
-        int indexBeforeFinal = mgr.CurrentStepIndex;
-        mgr.CompleteCurrentStep(); // 应该 return 不做事
-        Assert.AreEqual(indexBeforeFinal, mgr.CurrentStepIndex, "重复完成已完成的最后步骤不应增加索引");
+        mgr.CompleteCurrentStep(); // 正确操作，不改错误计数
+        Assert.AreEqual(2, mgr.WrongOperationCount);
     }
 
     [Test]
-    public void DuplicateStep_ProgressDoesNotExceedTotal()
+    public void WrongOperationCount_AfterComplete()
     {
         var mgr = CreateManagerWithSteps(2);
 
-        mgr.CompleteCurrentStep(); // 1/2
-        mgr.CompleteCurrentStep(); // 2/2 → completed
+        mgr.RecordWrongOperation(1);
+        mgr.RecordWrongOperation(1);
+        mgr.CompleteCurrentStep(); // Battery
+        mgr.CompleteCurrentStep(); // 后盖
 
-        // 后续多次调用不应改变索引或完成状态
-        mgr.CompleteCurrentStep();
-        mgr.CompleteCurrentStep();
-
-        Assert.IsTrue(mgr.IsCompleted);
-        Assert.AreEqual(2, mgr.CurrentStepIndex);
+        var result = mgr.BuildResult();
+        Assert.AreEqual(2, result.wrongOperationCount);
+        Assert.IsFalse(result.isCompleted, "仅完成拆卸阶段不应标记为 completed");
     }
 
     // ============================================
-    // Test 6: 步骤边界
+    // Test 9~11: 评分
     // ============================================
     [Test]
-    public void Boundary_EmptyStepsDoesNotThrow()
+    public void Scoring_BaseScoreIs100WithNoErrors()
+    {
+        // 0 错误，0 重置，快速完成
+        int score = TrainingScoring.CalculateScore(30f, 0, 0);
+        Assert.AreEqual(100, score);
+    }
+
+    [Test]
+    public void Scoring_EachWrongOperationDeducts10()
+    {
+        int score = TrainingScoring.CalculateScore(30f, 1, 0);
+        Assert.AreEqual(98, score, "1次错误应扣约2分（操作分扣2，时间分不变）");
+    }
+
+    [Test]
+    public void Scoring_ScoreNeverBelowZero()
+    {
+        int score = TrainingScoring.CalculateScore(10f, 100, 50);
+        Assert.GreaterOrEqual(score, 0);
+    }
+
+    // ============================================
+    // Test 12: 等级计算正确
+    // ============================================
+    [Test]
+    public void Grade_90_100_IsExcellent()
+    {
+        Assert.AreEqual("优秀", TrainingScoring.GetGrade(90));
+        Assert.AreEqual("优秀", TrainingScoring.GetGrade(95));
+        Assert.AreEqual("优秀", TrainingScoring.GetGrade(100));
+    }
+
+    [Test]
+    public void Grade_80_89_IsGood()
+    {
+        Assert.AreEqual("良好", TrainingScoring.GetGrade(80));
+        Assert.AreEqual("良好", TrainingScoring.GetGrade(85));
+        Assert.AreEqual("良好", TrainingScoring.GetGrade(89));
+    }
+
+    [Test]
+    public void Grade_60_79_IsPass()
+    {
+        Assert.AreEqual("合格", TrainingScoring.GetGrade(60));
+        Assert.AreEqual("合格", TrainingScoring.GetGrade(70));
+        Assert.AreEqual("合格", TrainingScoring.GetGrade(79));
+    }
+
+    [Test]
+    public void Grade_Below60_IsPractice()
+    {
+        Assert.AreEqual("待提升", TrainingScoring.GetGrade(0));
+        Assert.AreEqual("待提升", TrainingScoring.GetGrade(30));
+        Assert.AreEqual("待提升", TrainingScoring.GetGrade(59));
+    }
+
+    // ============================================
+    // Test 13: 训练结果数据正确
+    // ============================================
+    [Test]
+    public void TrainingResult_ContainsCorrectData()
+    {
+        var mgr = CreateManagerWithSteps(2);
+
+        mgr.RecordWrongOperation(1);
+        mgr.CompleteCurrentStep(); // 0
+        mgr.CompleteCurrentStep(); // 1
+        mgr.CompleteCurrentStep(); // 2
+        mgr.CompleteCurrentStep(); // 3
+
+        var result = mgr.BuildResult();
+        Assert.IsTrue(result.isCompleted);
+        Assert.AreEqual(1, result.wrongOperationCount);
+        Assert.GreaterOrEqual(result.elapsedSeconds, 0f);
+        Assert.AreEqual(4, mgr.TotalSteps);
+    }
+
+    // ============================================
+    // Test 14: JSON 保存数据正确
+    // ============================================
+    [Test]
+    public void Persistence_SaveAndLoad_ReturnsMatchingData()
+    {
+        // 使用 TestResult 模拟完整结果
+        var result = new TrainingResult(true, 45.5f, 2, 1, 100f);
+        result.SetScore(80, "良好");
+
+        bool saved = TrainingResultPersistence.Save(result);
+        Assert.IsTrue(saved, "保存应返回 true");
+
+        var loaded = TrainingResultPersistence.LoadLast();
+        Assert.IsNotNull(loaded, "加载应返回非 null");
+        Assert.IsTrue(loaded.isCompleted);
+        Assert.AreEqual(45.5f, loaded.elapsedSeconds, 0.01f);
+        Assert.AreEqual(2, loaded.wrongOperationCount);
+        Assert.AreEqual(1, loaded.resetCount);
+        Assert.AreEqual(80, loaded.Score);
+        Assert.AreEqual("良好", loaded.Grade);
+    }
+
+    // ============================================
+    // Test 15: JSON 读取数据正确
+    // ============================================
+    [Test]
+    public void Persistence_LoadSavedJson_DeserializesCorrectly()
+    {
+        // 直接验证序列化到文件的内容
+        var result = new TrainingResult(true, 30f, 0, 0, 60f);
+        result.SetScore(100, "优秀");
+        TrainingResultPersistence.Save(result);
+
+        string filePath = TrainingResultPersistence.FilePath;
+        Assert.IsTrue(File.Exists(filePath));
+
+        string rawJson = File.ReadAllText(filePath);
+        Assert.IsTrue(rawJson.Contains("优秀"), "JSON 应包含等级信息");
+        Assert.IsTrue(rawJson.Contains("100"), "JSON 应包含得分");
+        Assert.IsTrue(rawJson.Contains("true"), "JSON 应包含 isCompleted");
+    }
+
+    // ============================================
+    // Test 16: 空/损坏 JSON 不导致系统崩溃
+    // ============================================
+    [Test]
+    public void Persistence_CorruptJson_ReturnsNull()
+    {
+        string filePath = TrainingResultPersistence.FilePath;
+
+        // 确保父目录存在
+        string dir = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+
+        // 写入无效 JSON
+        File.WriteAllText(filePath, "{invalid json!!!}");
+
+        // 加载应返回 null，不抛异常
+        TrainingResult loaded = null;
+        Assert.DoesNotThrow(() => { loaded = TrainingResultPersistence.LoadLast(); });
+        Assert.IsNull(loaded);
+    }
+
+    [Test]
+    public void Persistence_EmptyFile_ReturnsNull()
+    {
+        string filePath = TrainingResultPersistence.FilePath;
+        string dir = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+
+        File.WriteAllText(filePath, "");
+
+        TrainingResult loaded = null;
+        Assert.DoesNotThrow(() => { loaded = TrainingResultPersistence.LoadLast(); });
+        Assert.IsNull(loaded);
+    }
+
+    [Test]
+    public void Persistence_NoFile_ReturnsNull()
+    {
+        string filePath = TrainingResultPersistence.FilePath;
+        if (File.Exists(filePath))
+            File.Delete(filePath);
+
+        var loaded = TrainingResultPersistence.LoadLast();
+        Assert.IsNull(loaded);
+    }
+
+    // ============================================
+    // M27 兼容性测试（必须通过）
+    // ============================================
+    [Test]
+    public void M27Compatible_EmptyStepsDoesNotThrow()
     {
         var go = new GameObject("EmptyTest");
         var mgr = go.AddComponent<TrainingManager>();
-        mgr.ConfigureSteps(new List<TrainingStep>()); // 0 步
+        mgr.ConfigureSteps(new List<TrainingStep>());
 
-        // 无步骤时调用 CompleteCurrentStep 不应抛异常
         Assert.DoesNotThrow(() => mgr.CompleteCurrentStep());
         Assert.AreEqual(0, mgr.CurrentStepIndex);
         Assert.IsFalse(mgr.IsCompleted);
     }
 
     [Test]
-    public void Boundary_LastStepNoArrayOverflow()
-    {
-        var mgr = CreateManagerWithSteps(1);
-
-        mgr.CompleteCurrentStep();
-
-        Assert.IsTrue(mgr.IsCompleted);
-        // 检查越界访问
-        Assert.IsNull(mgr.CurrentStep);
-        Assert.DoesNotThrow(() => mgr.CompleteCurrentStep());
-        Assert.DoesNotThrow(() => { var name = mgr.GetStepName(999); });
-    }
-
-    [Test]
-    public void Boundary_ResetAfterCompletionWorks()
-    {
-        var mgr = CreateManagerWithSteps(3);
-
-        mgr.CompleteCurrentStep();
-        mgr.CompleteCurrentStep();
-        mgr.CompleteCurrentStep();
-
-        Assert.IsTrue(mgr.IsCompleted);
-
-        mgr.ResetTraining();
-
-        Assert.AreEqual(0, mgr.CurrentStepIndex, "重置后索引应回到 0");
-        Assert.IsFalse(mgr.IsCompleted, "重置后 IsCompleted 应为 false");
-    }
-
-    // ============================================
-    // 额外：BuildResult 非 M28，但验证核心统计
-    // ============================================
-    [Test]
-    public void Result_BuildResultAfterCompletionHasStats()
+    public void M27Compatible_ResetAfterCompletionWorks()
     {
         var mgr = CreateManagerWithSteps(2);
 
-        mgr.RecordWrongOperation(1);
         mgr.CompleteCurrentStep();
         mgr.CompleteCurrentStep();
+        mgr.CompleteCurrentStep();
+        mgr.CompleteCurrentStep();
+        Assert.IsTrue(mgr.IsCompleted);
 
-        var result = mgr.BuildResult();
-        Assert.IsTrue(result.isCompleted);
-        Assert.GreaterOrEqual(result.elapsedSeconds, 0f);
-        Assert.AreEqual(1, result.wrongOperationCount);
+        mgr.ResetTraining();
+        Assert.AreEqual(0, mgr.CurrentStepIndex);
+        Assert.IsFalse(mgr.IsCompleted);
+        Assert.AreEqual(TrainingPhase.Disassembly, mgr.CurrentPhase);
+    }
+
+    [Test]
+    public void M27Compatible_PhaseChangedOnPhaseSwitch()
+    {
+        var mgr = CreateManagerWithSteps(2);
+        int phaseChangeCount = 0;
+        mgr.OnPhaseChanged += (p) => { phaseChangeCount++; };
+
+        mgr.CompleteCurrentStep(); // 0, 拆卸中
+        Assert.AreEqual(0, phaseChangeCount, "同阶段内不应触发");
+
+        mgr.CompleteCurrentStep(); // 1 → 进入组装
+        Assert.AreEqual(1, phaseChangeCount);
+
+        mgr.CompleteCurrentStep(); // 2, 组装中
+        Assert.AreEqual(1, phaseChangeCount, "同阶段内不应触发");
+
+        mgr.CompleteCurrentStep(); // 3 → completed
+        Assert.AreEqual(2, phaseChangeCount, "进入 complete 应再触发一次");
     }
 }

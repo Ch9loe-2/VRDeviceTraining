@@ -33,6 +33,8 @@ public static class TrainingResultPersistence
         public int wrongOperationCount;
         public int resetCount;
         public float completionTime;
+        public int totalSteps;
+        public int correctSteps;
         public int score;
         public string grade;
     }
@@ -110,6 +112,8 @@ public static class TrainingResultPersistence
             dto.resetCount,
             dto.completionTime
         );
+        result.totalSteps = dto.totalSteps;
+        result.correctSteps = dto.correctSteps;
         result.SetScore(dto.score, dto.grade);
         return result;
     }
@@ -123,6 +127,8 @@ public static class TrainingResultPersistence
             wrongOperationCount = result.wrongOperationCount,
             resetCount = result.resetCount,
             completionTime = result.completionTime,
+            totalSteps = result.totalSteps,
+            correctSteps = result.correctSteps,
             score = result.Score,
             grade = result.Grade,
         };

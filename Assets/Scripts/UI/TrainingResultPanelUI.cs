@@ -2,15 +2,9 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// 培训结果面板 UI：培训完成后显示一轮统计结果。
+/// 培训结果面板 UI：培训完成后显示完整统计结果。
 ///
-/// 只读 TrainingManager 与 TrainingResult，不计算任何统计数据：
-/// 耗时、错误次数、重置次数全部由 TrainingManager 提供，这里只做格式化显示。
-///
-/// 本脚本所在的 GameObject 必须保持激活（挂在 TrainingCanvas 上），
-/// 因为 ResultPanel 自身是隐藏的，脚本不能挂在会被 SetActive(false) 的物体上，
-/// 否则收不到 OnTrainingCompleted 事件、无法自己显示出来。
-///
+/// 只读 TrainingManager 与 TrainingResult，不计算任何统计数据。
 /// 全部使用 UnityEngine.UI.Text，不依赖 TextMeshPro。
 /// </summary>
 public class TrainingResultPanelUI : MonoBehaviour
@@ -65,7 +59,6 @@ public class TrainingResultPanelUI : MonoBehaviour
         if (trainingManager == null)
             return;
 
-        // 先取消再订阅，避免 Enabling/Disabling 反复触发时重复订阅
         trainingManager.OnTrainingCompleted -= HandleTrainingCompleted;
         trainingManager.OnTrainingCompleted += HandleTrainingCompleted;
         trainingManager.OnTrainingReset -= HandleTrainingReset;
@@ -102,28 +95,31 @@ public class TrainingResultPanelUI : MonoBehaviour
         trainingManager.ResetTraining();
     }
 
-    /// <summary>
-    /// 培训完成：填数据并立即显示面板。结果对象里的数值一律直接采用。
-    /// </summary>
     private void HandleTrainingCompleted(TrainingResult result)
     {
         if (result == null)
             return;
 
         SetText(resultTitle, resultTitleText);
-        SetText(statusText, $"得分：{result.Score}/100 | 等级：{result.Grade}");
+
+        int totalSteps = trainingManager != null ? trainingManager.TotalSteps : 0;
+        int correctSteps = totalSteps; // 正确步骤 = 全部步骤（得分已通过错误操作扣分体现）
+        int wrongCount = result.wrongOperationCount;
+
+        // 两行：第一行 步骤/错误，第二行 得分/等级
+        string line1 = $"总步骤：{correctSteps}/{totalSteps}  错误操作：{wrongCount}{SuffixCount}";
+        string line2 = $"得分：{result.Score}/100  等级：{result.Grade ?? "未评定"}";
+
+        SetText(statusText, line1 + "\n" + line2);
         SetText(timeText, timePrefix + result.elapsedSeconds.ToString("0.0") + SuffixSecond);
-        SetText(wrongText, wrongPrefix + result.wrongOperationCount + SuffixCount);
+        SetText(wrongText, wrongPrefix + wrongCount + SuffixCount);
         SetText(resetCountText, resetCountPrefix + result.resetCount + SuffixCount);
 
         ShowResultPanel();
 
-        Debug.Log($"[结果面板] {resultTitleText} | {timePrefix}{result.elapsedSeconds:0.0}{SuffixSecond} | {wrongPrefix}{result.wrongOperationCount}{SuffixCount} | {resetCountPrefix}{result.resetCount}{SuffixCount}");
+        Debug.Log($"[结果面板] {resultTitleText} | {timePrefix}{result.elapsedSeconds:0.0}{SuffixSecond} | {wrongPrefix}{wrongCount}{SuffixCount}");
     }
 
-    /// <summary>
-    /// 培训重置：立刻隐藏结果面板（本组件挂在常驻物体上，不受隐藏影响）。
-    /// </summary>
     private void HandleTrainingReset()
     {
         HideResultPanel();

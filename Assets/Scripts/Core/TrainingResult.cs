@@ -25,6 +25,12 @@ public class TrainingResult
     /// <summary>完成时刻的 Time.time 绝对值，仅用于调试与展示。</summary>
     public float completionTime;
 
+    /// <summary>总步骤数（拆卸+组装）。</summary>
+    public int totalSteps;
+
+    /// <summary>正确完成步骤数（应等于 totalSteps，得分由错误操作扣分体现）。</summary>
+    public int correctSteps;
+
     /// <summary>本轮最终评分（0~100）。只在完成时有意义，未完成时为 0。</summary>
     private int score;
 
@@ -58,5 +64,7 @@ public class TrainingResult
         this.wrongOperationCount = wrongOperationCount;
         this.resetCount = resetCount;
         this.completionTime = completionTime;
+        this.totalSteps = 0;
+        this.correctSteps = 0;
     }
 }

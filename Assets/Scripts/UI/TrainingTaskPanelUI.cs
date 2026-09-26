@@ -8,10 +8,6 @@ using UnityEngine.UI;
 /// 只读取 TrainingManager，不修改 TrainingManager 的任何数据，也不修改步骤配置。
 /// 只在 TrainingManager 的进度发生变化时刷新文本，不做每帧无意义赋值。
 /// 全部使用 UnityEngine.UI.Text，不依赖 TextMeshPro。
-///
-/// M26.1：步骤行改为「容器 + 模板」的运行时动态生成，行数 = TrainingManager.TotalSteps，
-/// 不再有固定的 3 行上限。旧版固定字段 step1Text / step2Text / step3Text 已移除，
-/// 步骤行的数量不再由任何序列化字段决定。
 /// </summary>
 public class TrainingTaskPanelUI : MonoBehaviour
 {
@@ -23,49 +19,43 @@ public class TrainingTaskPanelUI : MonoBehaviour
     [SerializeField] private Text currentStepText;
 
     [Header("步骤列表（动态）")]
-    [Tooltip("步骤行容器。运行时按 TrainingManager.TotalSteps 生成对应数量的步骤行，行数不再有上限。")]
+    [Tooltip("步骤行容器。运行时按 TrainingManager.TotalSteps 生成对应数量的步骤行。")]
     [SerializeField] private RectTransform stepListContainer;
 
     [Tooltip("步骤行模板。只用来复制，不参与显示，Start 之后会被隐藏。")]
     [SerializeField] private Text stepRowTemplate;
 
     [Header("错误提示")]
-    [Tooltip("误操作提示文本。为空时只在 Console 输出，不显示提示。")]
+    [Tooltip("误操作提示文本。")]
     [SerializeField] private Text hintText;
 
     [Tooltip("提示显示时长（秒）")]
     [SerializeField] private float hintDuration = 2f;
 
-    [SerializeField] private string hintPrefix = "请先完成：";
+    [SerializeField] private string hintPrefix = "当前应操作：";
 
     [Header("操作按钮")]
-    [Tooltip("重新开始按钮。为空时只能通过代码调用 TrainingManager.ResetTraining()。")]
+    [Tooltip("重新开始按钮。")]
     [SerializeField] private Button resetButton;
 
     [Header("显示文案")]
-    [Tooltip("任务标题，一般不需要改动")]
+    [Tooltip("任务标题")]
     [SerializeField] private string taskTitle = "设备拆装培训";
 
     private const string PrefixCurrentStep = "当前步骤：";
-    private const string TextAllCompleted = "当前步骤：培训已完成";
+    private const string TextAllCompleted = "培训已完成";
+    private const string PrefixPhase = "阶段：";
     private const string SuffixCompleted = " [已完成]";
     private const string SuffixActive = " [进行中]";
     private const string SuffixPending = " [待完成]";
 
-    // ===== 动态步骤行布局常量（M26.1）=====
-    // 与旧版固定 Y（-118 / -156 / -194）完全对齐：
-    // 单行高 34，行间距 4，三行总高 = 3*34 + 2*4 = 110。
-    // 因此 2 步 / 3 步时面板外观与 M26.1 之前逐像素一致。
+    // ===== 动态步骤行布局常量 =====
     private const float RowHeight = 34f;
     private const float RowSpacing = 4f;
     private const int BaselineRowCount = 3;
 
-    // 运行时生成的步骤行（不含模板自身）。索引与 TrainingManager 的步骤索引一一对应。
     private readonly List<Text> stepRows = new List<Text>();
 
-    // ===== 布局基准值 =====
-    // 在 Awake 时从场景实际取值，避免把 TaskPanel / HintText / ResetButton
-    // 的当前坐标写死进代码。行数超过基线时，这三者整体下移「超出的高度」。
     private RectTransform panelRect;
     private Vector2 panelBaseSize;
     private RectTransform hintRect;
@@ -77,19 +67,17 @@ public class TrainingTaskPanelUI : MonoBehaviour
     private bool lastAllCompleted;
     private bool warnedMissingManager;
     private int lastRowCount = 0;
+    private TrainingPhase lastPhase = TrainingPhase.Disassembly;
 
-    // 提示的到期时间（Time.time 基准）；<= 0 表示当前没有正在显示的提示
     private float hintHideTime;
 
     private void Awake()
     {
         CaptureLayoutBaseline();
 
-        // 模板只用于复制，不参与显示。
         if (stepRowTemplate != null)
             stepRowTemplate.gameObject.SetActive(false);
 
-        // 清掉上一次运行可能残留下来的步骤行，保证从干净状态开始。
         ClearRuntimeRows();
 
         if (resetButton != null)
@@ -121,11 +109,12 @@ public class TrainingTaskPanelUI : MonoBehaviour
         if (trainingManager == null)
             return;
 
-        // 先取消再订阅，避免重复订阅导致一次误操作触发多次
         trainingManager.OnWrongOperation -= HandleWrongOperation;
         trainingManager.OnWrongOperation += HandleWrongOperation;
         trainingManager.OnTrainingReset -= HandleTrainingReset;
         trainingManager.OnTrainingReset += HandleTrainingReset;
+        trainingManager.OnPhaseChanged -= HandlePhaseChanged;
+        trainingManager.OnPhaseChanged += HandlePhaseChanged;
     }
 
     private void UnsubscribeTrainingEvents()
@@ -135,12 +124,15 @@ public class TrainingTaskPanelUI : MonoBehaviour
 
         trainingManager.OnWrongOperation -= HandleWrongOperation;
         trainingManager.OnTrainingReset -= HandleTrainingReset;
+        trainingManager.OnPhaseChanged -= HandlePhaseChanged;
     }
 
-    /// <summary>
-    /// 收到培训重置事件：立刻刷新面板，并清掉可能还挂着的误操作提示。
-    /// 零件在同一次广播里由 PartInteractable 自行复位，这里不碰任何零件状态。
-    /// </summary>
+    private void HandlePhaseChanged(TrainingPhase phase)
+    {
+        // 重构步骤行以反映组装阶段的步骤名称变化
+        Refresh();
+    }
+
     private void HandleTrainingReset()
     {
         hintHideTime = 0f;
@@ -160,9 +152,6 @@ public class TrainingTaskPanelUI : MonoBehaviour
         trainingManager.ResetTraining();
     }
 
-    /// <summary>
-    /// 收到误操作事件：显示提示并重新计时（新提示会覆盖旧提示的倒计时）。
-    /// </summary>
     private void HandleWrongOperation(int expectedStepIndex)
     {
         string stepName = SafeStepName(expectedStepIndex);
@@ -181,7 +170,6 @@ public class TrainingTaskPanelUI : MonoBehaviour
         hintHideTime = Time.time + Mathf.Max(0.1f, hintDuration);
     }
 
-    /// <summary>提示到期后清空。只在到点那一帧写一次，不做每帧赋值。</summary>
     private void UpdateHintVisibility()
     {
         if (hintText == null || hintHideTime <= 0f)
@@ -199,7 +187,6 @@ public class TrainingTaskPanelUI : MonoBehaviour
         if (trainingManager == null)
             return;
 
-        // 只在进度真正发生变化时才刷新，避免每帧写 Text
         int index = trainingManager.CurrentStepIndex;
         bool allCompleted = IsAllCompleted();
 
@@ -209,7 +196,6 @@ public class TrainingTaskPanelUI : MonoBehaviour
         UpdateHintVisibility();
     }
 
-    /// <summary>立即刷新一次，可在 Inspector 右键菜单里手动触发验证。</summary>
     [ContextMenu("立即刷新任务面板")]
     public void Refresh()
     {
@@ -231,21 +217,24 @@ public class TrainingTaskPanelUI : MonoBehaviour
 
         SetText(taskTitleText, taskTitle);
 
-        // 进度 = 已完成步骤数 / 总步骤数。全部完成时已完成数取总数。
+        // 阶段与当前步骤
         int stepCount = trainingManager.TotalSteps;
         int doneCount = allCompleted ? stepCount : index;
 
-        TrainingStep current = trainingManager.CurrentStep;
-        if (current != null)
-            SetText(currentStepText, PrefixCurrentStep + current.StepName + FormatProgress(doneCount, stepCount));
-        else if (allCompleted)
+        if (allCompleted)
+        {
             SetText(currentStepText, TextAllCompleted + FormatProgress(stepCount, stepCount));
+        }
         else
-            SetText(currentStepText, PrefixCurrentStep + SafeStepName(index) + FormatProgress(doneCount, stepCount));
+        {
+            string phaseName = GetPhaseLabel(trainingManager.CurrentPhase);
+            string stepName = trainingManager.GetStepName(index);
+            SetText(currentStepText, PrefixPhase + phaseName + "  " + PrefixCurrentStep + stepName + FormatProgress(doneCount, stepCount));
+        }
 
-        // 步骤行的唯一数据源：TrainingManager.TotalSteps。
-        // 行数 = 步骤数，不再受任何固定字段数量限制。
-        LayoutStepList(stepCount);
+        // 步骤行：TotalSteps 包含拆卸 + 组装
+        int listStepCount = stepCount;
+        LayoutStepList(listStepCount);
 
         for (int i = 0; i < stepRows.Count; i++)
         {
@@ -261,22 +250,13 @@ public class TrainingTaskPanelUI : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 全部完成的判定：TrainingManager.CurrentStep 为 null 表示索引已越过最后一步。
-    /// 索引为 0 时也可能为 null（步骤列表为空），这种情况不视为"全部完成"。
-    /// </summary>
     private bool IsAllCompleted()
     {
         return trainingManager != null
                && trainingManager.CurrentStep == null
-               && trainingManager.CurrentStepIndex > 0;
+               && trainingManager.CurrentStepIndex >= trainingManager.TotalSteps;
     }
 
-    /// <summary>
-    /// 步骤名称的唯一数据源：TrainingManager。
-    /// 步骤名唯一来源是 TrainingManager，本组件不持有步骤名称副本。
-    /// TrainingManager.GetStepName() 对越界索引会返回「第 N 步」兜底，不会返回 null。
-    /// </summary>
     private string SafeStepName(int index)
     {
         if (trainingManager == null || index < 0)
@@ -285,12 +265,19 @@ public class TrainingTaskPanelUI : MonoBehaviour
         return trainingManager.GetStepName(index);
     }
 
-    // ==================== 动态步骤行（M26.1）====================
+    private string GetPhaseLabel(TrainingPhase phase)
+    {
+        switch (phase)
+        {
+            case TrainingPhase.Disassembly: return "拆卸";
+            case TrainingPhase.Assembly: return "组装";
+            case TrainingPhase.Completed: return "已完成";
+            default: return "培训";
+        }
+    }
 
-    /// <summary>
-    /// 记录布局基准值。TaskPanel / HintText / ResetButton 的当前坐标直接从场景读取，
-    /// 不在代码里写死，这样以后在 Inspector 里调整它们的位置不需要改代码。
-    /// </summary>
+    // ==================== 动态步骤行 ====================
+
     private void CaptureLayoutBaseline()
     {
         if (stepListContainer == null)
@@ -314,10 +301,6 @@ public class TrainingTaskPanelUI : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 销毁容器下所有运行时生成的步骤行，只保留模板自身。
-    /// 用于 Awake，保证不会残留上一次运行（或编辑态误存）留下来的行。
-    /// </summary>
     private void ClearRuntimeRows()
     {
         if (stepListContainer == null)
@@ -338,10 +321,6 @@ public class TrainingTaskPanelUI : MonoBehaviour
         lastRowCount = 0;
     }
 
-    /// <summary>
-    /// 按步骤数对齐步骤行数量并刷新列表高度。
-    /// 行数变化时才增删对象，普通刷新只改文本，不产生额外的对象创建。
-    /// </summary>
     private void LayoutStepList(int count)
     {
         if (stepListContainer == null)
@@ -368,7 +347,6 @@ public class TrainingTaskPanelUI : MonoBehaviour
         ApplyListOverflow(listHeight);
     }
 
-    /// <summary>把步骤行数量对齐到 count：多余的行销毁，不足的从模板复制。</summary>
     private void EnsureRowCount(int count)
     {
         if (stepRowTemplate == null)
@@ -399,11 +377,6 @@ public class TrainingTaskPanelUI : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 步骤行超过基线数量（3 行）时，把 TaskPanel 高度、HintText、ResetButton
-    /// 整体下移超出的高度，保证步骤行始终在面板内，且不遮挡提示与按钮。
-    /// 2 步 / 3 步时 extra 恒为 0，外观与 M26.1 之前完全一致。
-    /// </summary>
     private void ApplyListOverflow(float listHeight)
     {
         float baseline = BaselineRowCount * RowHeight + (BaselineRowCount - 1) * RowSpacing;
@@ -419,7 +392,6 @@ public class TrainingTaskPanelUI : MonoBehaviour
             resetRect.anchoredPosition = new Vector2(resetBasePos.x, resetBasePos.y - extra);
     }
 
-    /// <summary>运行中用 Destroy，编辑态（ContextMenu 手动刷新）用 DestroyImmediate。</summary>
     private static void DestroySmart(GameObject go)
     {
         if (go == null)
