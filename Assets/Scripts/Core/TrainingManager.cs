@@ -102,6 +102,12 @@ public class TrainingManager : MonoBehaviour
     public bool IsCompleted => completed;
     public float WrongOperationCooldown => wrongOperationCooldown;
 
+    /// <summary>供测试或工具代码在运行时调整误操作冷却时间。</summary>
+    public void SetWrongOperationCooldown(float seconds)
+    {
+        wrongOperationCooldown = seconds;
+    }
+
     /// <summary>当前步骤。统一索引映射到底层步骤对象（组装阶段返回逆向映射）。</summary>
     public TrainingStep CurrentStep
     {
@@ -196,6 +202,9 @@ public class TrainingManager : MonoBehaviour
         if (completed)
             return;
 
+        if (steps == null || steps.Count == 0)
+            return;
+
         Debug.Log($"【步骤完成】{GetStepName(currentStepIndex)}");
         MoveToNextStep();
     }
@@ -245,6 +254,14 @@ public class TrainingManager : MonoBehaviour
             completed = true;
             elapsedSeconds = Time.time - startTime;
             completionTime = Time.time;
+
+            // Assembly → Completed 阶段切换
+            if (lastPhase != TrainingPhase.Completed)
+            {
+                Debug.Log($"【阶段切换】{lastPhase} → {TrainingPhase.Completed}");
+                lastPhase = TrainingPhase.Completed;
+                OnPhaseChanged?.Invoke(TrainingPhase.Completed);
+            }
 
             Debug.Log("【培训完成】所有拆卸与组装步骤已经完成。");
             Debug.Log($"【培训结果】耗时 {elapsedSeconds:0.0} 秒，错误操作 {wrongOperationCount} 次，累计重置 {resetCount} 次");

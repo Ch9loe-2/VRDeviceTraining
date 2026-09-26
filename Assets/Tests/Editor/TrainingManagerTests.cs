@@ -253,6 +253,7 @@ public class TrainingManagerTests
     public void WrongOperationCount_TracksCorrectly()
     {
         var mgr = CreateManagerWithSteps(2);
+        mgr.SetWrongOperationCooldown(0f);
 
         mgr.RecordWrongOperation(1);
         Assert.AreEqual(1, mgr.WrongOperationCount);
@@ -268,6 +269,7 @@ public class TrainingManagerTests
     public void WrongOperationCount_AfterComplete()
     {
         var mgr = CreateManagerWithSteps(2);
+        mgr.SetWrongOperationCooldown(0f);
 
         mgr.RecordWrongOperation(1);
         mgr.RecordWrongOperation(1);
