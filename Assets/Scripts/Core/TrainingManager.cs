@@ -67,6 +67,19 @@ public class TrainingManager : MonoBehaviour
 
     public float WrongOperationCooldown => wrongOperationCooldown;
 
+    /// <summary>
+    /// 供测试 / 工具代码在运行时动态配置步骤。
+    /// 不影响序列化的场景配置，只覆写运行时数据。
+    /// </summary>
+    public void ConfigureSteps(List<TrainingStep> newSteps)
+    {
+        steps = newSteps;
+        currentStepIndex = 0;
+        if (steps.Count > 0)
+            BeginRound();
+    }
+
+    /// <summary>当前步骤，栈上缓存以避免每帧访问 List。</summary>
     public TrainingStep CurrentStep
     {
         get

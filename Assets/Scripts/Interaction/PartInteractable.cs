@@ -9,6 +9,16 @@ using UnityEngine.XR.Interaction.Toolkit;
 /// - 只有轮到 requiredStepIndex 这一步时，移动超过拆卸距离才会推进培训流程。
 /// 已经拆卸成功的零件不再参与锁定，避免影响已完成状态。
 /// </summary>
+public enum PartStatus
+{
+    /// <summary>尚未轮到，被锁定，不可抓取。</summary>
+    Locked,
+    /// <summary>当前步骤要求本零件，可操作。</summary>
+    Available,
+    /// <summary>已成功拆卸。</summary>
+    Removed
+}
+
 public class PartInteractable : MonoBehaviour
 {
     [Header("零件信息")]
@@ -27,6 +37,22 @@ public class PartInteractable : MonoBehaviour
     private Vector3 originalPosition;
     private Quaternion originalRotation;
     private bool detached = false;
+
+    /// <summary>
+    /// 零件当前拆卸状态（仅由 detached / IsMyStep 推导，不改变任何交互行为）。
+    /// Locked = 未轮到；Available = 当前可操作；Removed = 已拆卸。
+    /// </summary>
+    public PartStatus Status
+    {
+        get
+        {
+            if (detached)
+                return PartStatus.Removed;
+            if (IsMyStep())
+                return PartStatus.Available;
+            return PartStatus.Locked;
+        }
+    }
 
     private XRGrabInteractable grabInteractable;
     private int lastStepIndex = int.MinValue;

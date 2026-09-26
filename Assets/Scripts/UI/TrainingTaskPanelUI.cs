@@ -231,17 +231,20 @@ public class TrainingTaskPanelUI : MonoBehaviour
 
         SetText(taskTitleText, taskTitle);
 
+        // 进度 = 已完成步骤数 / 总步骤数。全部完成时已完成数取总数。
+        int stepCount = trainingManager.TotalSteps;
+        int doneCount = allCompleted ? stepCount : index;
+
         TrainingStep current = trainingManager.CurrentStep;
         if (current != null)
-            SetText(currentStepText, PrefixCurrentStep + current.StepName);
+            SetText(currentStepText, PrefixCurrentStep + current.StepName + FormatProgress(doneCount, stepCount));
         else if (allCompleted)
-            SetText(currentStepText, TextAllCompleted);
+            SetText(currentStepText, TextAllCompleted + FormatProgress(stepCount, stepCount));
         else
-            SetText(currentStepText, PrefixCurrentStep + SafeStepName(index));
+            SetText(currentStepText, PrefixCurrentStep + SafeStepName(index) + FormatProgress(doneCount, stepCount));
 
         // 步骤行的唯一数据源：TrainingManager.TotalSteps。
         // 行数 = 步骤数，不再受任何固定字段数量限制。
-        int stepCount = trainingManager.TotalSteps;
         LayoutStepList(stepCount);
 
         for (int i = 0; i < stepRows.Count; i++)
@@ -426,6 +429,11 @@ public class TrainingTaskPanelUI : MonoBehaviour
             Destroy(go);
         else
             DestroyImmediate(go);
+    }
+
+    private static string FormatProgress(int done, int total)
+    {
+        return total > 0 ? $"（进度 {done}/{total}）" : string.Empty;
     }
 
     private static void SetText(Text target, string value)
