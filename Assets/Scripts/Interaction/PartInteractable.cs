@@ -413,4 +413,20 @@ public class PartInteractable : MonoBehaviour
 
         return $"第 {requiredStepIndex + 1} 步";
     }
+
+    /// <summary>
+    /// 由 TrainingConfigLoader 调用：运行时从 CSV 设置零件的步骤索引与名称。
+    /// 只修改配置字段，不改变任何既有行为；未配置 CSV 时场景序列化值保持原样。
+    /// </summary>
+    public void ConfigureByCSV(int stepIndex, string newName)
+    {
+        requiredStepIndex = stepIndex;
+        partName = newName;
+
+        // 强制下次刷新锁定状态，立即生效
+        lastPhaseStep = int.MinValue;
+        RefreshLockState(true);
+
+        Debug.Log($"【配置加载】{partName} 已从 CSV 绑定步骤索引 {requiredStepIndex}");
+    }
 }

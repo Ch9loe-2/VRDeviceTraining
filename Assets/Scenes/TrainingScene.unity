@@ -482,6 +482,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   partName: Battery
   detachDistance: 0.5
+  attachDistance: 0.3
   trainingManager: {fileID: 2022842900}
   requiredStepIndex: 0
 --- !u!1 &22876763
@@ -2201,6 +2202,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   partName: BackCover
   detachDistance: 0.5
+  attachDistance: 0.3
   trainingManager: {fileID: 2022842900}
   requiredStepIndex: 1
 --- !u!114 &983539538
@@ -2892,8 +2894,8 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 409657205}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 1, y: 1}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 34}
   m_Pivot: {x: 0, y: 1}
@@ -4449,6 +4451,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2022842901}
   - component: {fileID: 2022842900}
+  - component: {fileID: 2022842902}
   m_Layer: 0
   m_Name: TrainingManager
   m_TagString: Untagged
@@ -4489,6 +4492,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2022842902
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2022842899}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 53e23f36cb80646bc9a75ba6e3c1e544, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  configCsv: {fileID: 4900000, guid: 5a1d76e86d9da4269b3756f226be6554, type: 3}
+  trainingManager: {fileID: 2022842900}
+  autoBindParts: 1
 --- !u!1 &2088611590
 GameObject:
   m_ObjectHideFlags: 0

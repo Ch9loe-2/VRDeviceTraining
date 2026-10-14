@@ -1,0 +1,11 @@
+{
+  "name": "Scripts.Editor",
+  "references": [
+    "Scripts",
+    "Unity.XR.Interaction.Toolkit",
+    "Unity.InputSystem"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ]
+}
