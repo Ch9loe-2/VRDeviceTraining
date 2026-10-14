@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
@@ -37,6 +38,7 @@ public static class TrainingResultPersistence
         public int correctSteps;
         public int score;
         public string grade;
+        public List<TrainingResult.WrongCategoryCount> wrongByCategory;
     }
 
     /// <summary>
@@ -115,6 +117,7 @@ public static class TrainingResultPersistence
         result.totalSteps = dto.totalSteps;
         result.correctSteps = dto.correctSteps;
         result.SetScore(dto.score, dto.grade);
+        result.wrongByCategory = dto.wrongByCategory ?? new List<TrainingResult.WrongCategoryCount>();
         return result;
     }
 
@@ -131,6 +134,7 @@ public static class TrainingResultPersistence
             correctSteps = result.correctSteps,
             score = result.Score,
             grade = result.Grade,
+            wrongByCategory = result.wrongByCategory,
         };
     }
 }

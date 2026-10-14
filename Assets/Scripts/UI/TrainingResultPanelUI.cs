@@ -21,6 +21,10 @@ public class TrainingResultPanelUI : MonoBehaviour
     [SerializeField] private Text resetCountText;
     [SerializeField] private Button resultResetButton;
 
+    [Header("误操作分类统计")]
+    [Tooltip("展示各零件类别的误操作次数。留空则不显示该行。")]
+    [SerializeField] private Text categoryBreakdownText;
+
     [Header("显示文案")]
     [SerializeField] private string resultTitleText = "培训结果";
     [SerializeField] private string statusCompleted = "培训状态：已完成";
@@ -115,9 +119,37 @@ public class TrainingResultPanelUI : MonoBehaviour
         SetText(wrongText, wrongPrefix + wrongCount + SuffixCount);
         SetText(resetCountText, resetCountPrefix + result.resetCount + SuffixCount);
 
+        // 误操作分类统计展示（未绑定 categoryBreakdownText 时跳过）
+        if (categoryBreakdownText != null)
+        {
+            string breakdown = BuildCategoryBreakdown(result);
+            SetText(categoryBreakdownText, breakdown);
+        }
+
         ShowResultPanel();
 
         Debug.Log($"[结果面板] {resultTitleText} | {timePrefix}{result.elapsedSeconds:0.0}{SuffixSecond} | {wrongPrefix}{wrongCount}{SuffixCount}");
+    }
+
+    /// <summary>
+    /// 把结果中的误操作分类统计拼成可读文本。
+    /// 例："电源系统 2 次  外壳 1 次"；无分类数据时返回空串。
+    /// </summary>
+    private static string BuildCategoryBreakdown(TrainingResult result)
+    {
+        if (result == null || result.wrongByCategory == null || result.wrongByCategory.Count == 0)
+            return string.Empty;
+
+        var parts = new System.Collections.Generic.List<string>(result.wrongByCategory.Count);
+        for (int i = 0; i < result.wrongByCategory.Count; i++)
+        {
+            TrainingResult.WrongCategoryCount item = result.wrongByCategory[i];
+            if (item == null || string.IsNullOrEmpty(item.category))
+                continue;
+            parts.Add($"{item.category} {item.count} 次");
+        }
+
+        return parts.Count > 0 ? string.Join("  ", parts) : string.Empty;
     }
 
     private void HandleTrainingReset()

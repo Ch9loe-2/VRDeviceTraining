@@ -96,11 +96,17 @@ public class TrainingManager : MonoBehaviour
     private float lastWrongOperationTime = float.MinValue;
     private TrainingPhase lastPhase = TrainingPhase.Disassembly;
 
+    /// <summary>误操作按零件类别统计（类别名 → 次数）。由 RecordWrongOperation 维护。</summary>
+    private readonly Dictionary<string, int> wrongOperationByCategory = new Dictionary<string, int>();
+
     public float ElapsedSeconds => completed ? elapsedSeconds : Time.time - startTime;
     public int WrongOperationCount => wrongOperationCount;
     public int ResetCount => resetCount;
     public bool IsCompleted => completed;
     public float WrongOperationCooldown => wrongOperationCooldown;
+
+    /// <summary>误操作按类别统计的只读快照（类别名 → 次数），供 UI / 结果面板读取。</summary>
+    public IReadOnlyDictionary<string, int> WrongOperationByCategory => wrongOperationByCategory;
 
     /// <summary>供测试或工具代码在运行时调整误操作冷却时间。</summary>
     public void SetWrongOperationCooldown(float seconds)
@@ -161,6 +167,7 @@ public class TrainingManager : MonoBehaviour
         completionTime = 0f;
         lastWrongOperationTime = float.MinValue;
         lastPhase = TrainingPhase.Disassembly;
+        wrongOperationByCategory.Clear();
     }
 
     /// <summary>生成本轮结果快照。</summary>
@@ -177,6 +184,17 @@ public class TrainingManager : MonoBehaviour
         );
         result.totalSteps = steps.Count * 2;
         result.correctSteps = steps.Count * 2;
+
+        // 误操作分类统计写入结果
+        result.wrongByCategory.Clear();
+        foreach (var pair in wrongOperationByCategory)
+        {
+            result.wrongByCategory.Add(new TrainingResult.WrongCategoryCount
+            {
+                category = pair.Key,
+                count = pair.Value
+            });
+        }
 
         if (completed)
         {
@@ -212,13 +230,13 @@ public class TrainingManager : MonoBehaviour
     /// <summary>
     /// 记录一次误操作。
     /// </summary>
-    public void RecordWrongOperation(int expectedStepIndex)
+    public void RecordWrongOperation(int expectedStepIndex, string category = null)
     {
         string stepLabel = (expectedStepIndex >= 0 && expectedStepIndex < steps.Count)
             ? steps[expectedStepIndex].StepName
             : $"第 {expectedStepIndex + 1} 步";
 
-        Debug.Log($"【误操作】玩家尝试操作了非当前步骤的零件，应先完成：{stepLabel}（当前步骤索引 {currentStepIndex}）");
+        Debug.Log($"【误操作】玩家尝试操作了非当前步骤的零件：{stepLabel}（当前步骤索引 {currentStepIndex}）");
 
         if (Time.time - lastWrongOperationTime < wrongOperationCooldown)
         {
@@ -230,7 +248,14 @@ public class TrainingManager : MonoBehaviour
         lastWrongOperationTime = Time.time;
         wrongOperationCount++;
 
-        Debug.Log($"【误操作计数】本轮累计 {wrongOperationCount} 次");
+        // 按类别累计（缺省归入"未分类"）
+        string safeCategory = string.IsNullOrEmpty(category) ? "未分类" : category;
+        if (wrongOperationByCategory.ContainsKey(safeCategory))
+            wrongOperationByCategory[safeCategory]++;
+        else
+            wrongOperationByCategory[safeCategory] = 1;
+
+        Debug.Log($"【误操作计数】本轮累计 {wrongOperationCount} 次（类别：{safeCategory}，该类累计 {wrongOperationByCategory[safeCategory]} 次）");
 
         OnWrongOperation?.Invoke(expectedStepIndex);
     }
@@ -296,6 +321,7 @@ public class TrainingManager : MonoBehaviour
         lastWrongOperationTime = float.MinValue;
         completionTime = 0f;
         lastPhase = TrainingPhase.Disassembly;
+        wrongOperationByCategory.Clear();
 
         Debug.Log($"【培训重置】已恢复到第一步（累计重置 {resetCount} 次）");
 

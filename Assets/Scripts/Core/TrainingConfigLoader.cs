@@ -91,7 +91,7 @@ public class TrainingConfigLoader : MonoBehaviour
                 if (allParts[j].gameObject.name != partObjectName)
                     continue;
 
-                allParts[j].ConfigureByCSV(i, rows[i].StepName);
+                allParts[j].ConfigureByCSV(i, rows[i].StepName, rows[i].PartCategory);
                 boundCount++;
                 break;
             }
@@ -107,11 +107,12 @@ public class TrainingConfigLoader : MonoBehaviour
     {
         public string StepName;
         public string PartObjectName;
+        public string PartCategory;
     }
 
     /// <summary>
     /// 轻量 CSV 解析：
-    /// - 第一行为表头（StepName,PartObjectName），自动跳过；
+    /// - 第一行为表头（StepName,PartObjectName,PartCategory），自动跳过；
     /// - 支持双引号包裹字段（字段内含逗号/引号时）；
     /// - 跳过空行；
     /// - 兼容 \r\n 与 \n 换行。
@@ -141,19 +142,19 @@ public class TrainingConfigLoader : MonoBehaviour
             }
 
             List<string> fields = SplitCsvLine(line);
-            if (fields == null || fields.Count < 2)
+            if (fields == null || fields.Count < 1)
                 continue;
 
             string stepName = fields[0].Trim();
-            string partName = fields[1].Trim();
-
             if (string.IsNullOrEmpty(stepName))
                 continue;
 
             StepRow row = new StepRow
             {
                 StepName = stepName,
-                PartObjectName = partName
+                // 零件名与类别为可选列；缺省时留空，由调用方兜底
+                PartObjectName = fields.Count > 1 ? fields[1].Trim() : string.Empty,
+                PartCategory = fields.Count > 2 ? fields[2].Trim() : string.Empty
             };
             result.Add(row);
         }

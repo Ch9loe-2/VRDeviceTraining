@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -36,6 +37,17 @@ public class TrainingResult
 
     /// <summary>本轮评价等级。只在完成时有意义，未完成时为 null。</summary>
     private string grade;
+
+    /// <summary>误操作按零件类别统计（类别名 → 次数）。由 TrainingManager.BuildResult() 写入。</summary>
+    public List<WrongCategoryCount> wrongByCategory = new List<WrongCategoryCount>();
+
+    /// <summary>单个类别的误操作计数（可序列化）。</summary>
+    [Serializable]
+    public class WrongCategoryCount
+    {
+        public string category;
+        public int count;
+    }
 
     /// <summary>本轮最终评分（0~100）。未完成时为 0。</summary>
     public int Score => score;

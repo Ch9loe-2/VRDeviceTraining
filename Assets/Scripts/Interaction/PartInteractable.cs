@@ -25,6 +25,9 @@ public class PartInteractable : MonoBehaviour
     [Header("零件信息")]
     [SerializeField] private string partName = "Part";
 
+    [Header("零件类别（用于误操作分类统计，可由 CSV 配置）")]
+    [SerializeField] private string partCategory = "未分类";
+
     [Header("拆卸判定")]
     [SerializeField] private float detachDistance = 0.5f;
 
@@ -273,7 +276,7 @@ public class PartInteractable : MonoBehaviour
                 continue;
 
             wrongAttemptReported = true;
-            trainingManager.RecordWrongOperation(requiredStepIndex);
+            trainingManager.RecordWrongOperation(requiredStepIndex, partCategory);
         }
 
         if (!anySelectActive)
@@ -415,18 +418,22 @@ public class PartInteractable : MonoBehaviour
     }
 
     /// <summary>
-    /// 由 TrainingConfigLoader 调用：运行时从 CSV 设置零件的步骤索引与名称。
+    /// 由 TrainingConfigLoader 调用：运行时从 CSV 设置零件的步骤索引、名称与类别。
     /// 只修改配置字段，不改变任何既有行为；未配置 CSV 时场景序列化值保持原样。
     /// </summary>
-    public void ConfigureByCSV(int stepIndex, string newName)
+    public void ConfigureByCSV(int stepIndex, string newName, string newCategory = null)
     {
         requiredStepIndex = stepIndex;
         partName = newName;
+
+        // 类别缺省时保持原有值，避免覆盖场景中已配置的类别
+        if (!string.IsNullOrEmpty(newCategory))
+            partCategory = newCategory;
 
         // 强制下次刷新锁定状态，立即生效
         lastPhaseStep = int.MinValue;
         RefreshLockState(true);
 
-        Debug.Log($"【配置加载】{partName} 已从 CSV 绑定步骤索引 {requiredStepIndex}");
+        Debug.Log($"【配置加载】{partName}（{partCategory}）已从 CSV 绑定步骤索引 {requiredStepIndex}");
     }
 }
