@@ -145,6 +145,20 @@ public class TrainingManager : MonoBehaviour
             BeginRound();
     }
 
+    /// <summary>当前任务ID（多任务支持，由 TrainingConfigLoader 设置）。</summary>
+    public string CurrentTaskId { get; private set; } = "";
+
+    /// <summary>当前任务名称（多任务支持，由 TrainingConfigLoader 设置）。</summary>
+    public string CurrentTaskName { get; private set; } = "";
+
+    /// <summary>由 TrainingConfigLoader 调用：记录当前选中的任务信息。</summary>
+    public void SetCurrentTask(string taskId, string taskName)
+    {
+        CurrentTaskId = taskId ?? string.Empty;
+        CurrentTaskName = taskName ?? string.Empty;
+        Debug.Log($"【任务】当前任务：{CurrentTaskName}（{CurrentTaskId}）");
+    }
+
     private void Start()
     {
         if (steps.Count == 0)

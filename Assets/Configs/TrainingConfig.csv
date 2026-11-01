@@ -1,3 +1,5 @@
-StepName,PartObjectName,PartCategory
-拆卸 Battery,Battery,电源系统
-拆卸后盖,BackCover,外壳
+TaskID,TaskName,StepName,PartObjectName,PartCategory
+task_battery,电池拆装培训,拆卸 Battery,Battery,电源系统
+task_battery,电池拆装培训,拆卸后盖,BackCover,外壳
+task_motor,电机拆装培训,拆卸风扇,Fan,散热系统
+task_motor,电机拆装培训,拆卸电机,Motor,动力系统

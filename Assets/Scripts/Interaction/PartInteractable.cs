@@ -28,6 +28,13 @@ public class PartInteractable : MonoBehaviour
     [Header("零件类别（用于误操作分类统计，可由 CSV 配置）")]
     [SerializeField] private string partCategory = "未分类";
 
+    [Header("所属任务ID（多任务支持，由 CSV 配置）")]
+    [Tooltip("该零件属于哪套培训任务。为空时视为不属于任何任务，多任务切换时会被锁定。")]
+    [SerializeField] private string taskId = "";
+
+    /// <summary>零件所属任务ID（只读，供 TrainingConfigLoader 多任务切换判断）。</summary>
+    public string TaskId => taskId;
+
     [Header("拆卸判定")]
     [SerializeField] private float detachDistance = 0.5f;
 
@@ -418,10 +425,10 @@ public class PartInteractable : MonoBehaviour
     }
 
     /// <summary>
-    /// 由 TrainingConfigLoader 调用：运行时从 CSV 设置零件的步骤索引、名称与类别。
+    /// 由 TrainingConfigLoader 调用：运行时从 CSV 设置零件的步骤索引、名称、类别与所属任务。
     /// 只修改配置字段，不改变任何既有行为；未配置 CSV 时场景序列化值保持原样。
     /// </summary>
-    public void ConfigureByCSV(int stepIndex, string newName, string newCategory = null)
+    public void ConfigureByCSV(int stepIndex, string newName, string newCategory = null, string newTaskId = null)
     {
         requiredStepIndex = stepIndex;
         partName = newName;
@@ -430,10 +437,34 @@ public class PartInteractable : MonoBehaviour
         if (!string.IsNullOrEmpty(newCategory))
             partCategory = newCategory;
 
+        // 任务ID缺省时保持原有值
+        if (!string.IsNullOrEmpty(newTaskId))
+            taskId = newTaskId;
+
         // 强制下次刷新锁定状态，立即生效
         lastPhaseStep = int.MinValue;
         RefreshLockState(true);
 
-        Debug.Log($"【配置加载】{partName}（{partCategory}）已从 CSV 绑定步骤索引 {requiredStepIndex}");
+        Debug.Log($"【配置加载】{partName}（{partCategory}，任务：{taskId}）已从 CSV 绑定步骤索引 {requiredStepIndex}");
+    }
+
+    /// <summary>
+    /// 由 TrainingConfigLoader 调用：本零件不属于当前选中的任务，强制锁定抓取。
+    /// 锁定后不可抓取；切回所属任务时由 ConfigureByCSV 恢复。
+    /// </summary>
+    public void LockForOtherTask()
+    {
+        // 强制释放抓取，避免切任务瞬间仍被握着
+        ForceReleaseFromXR();
+
+        disassemblyRemoved = false;
+        assembled = false;
+        wrongAttemptReported = false;
+
+        if (grabInteractable != null && grabInteractable.enabled)
+        {
+            grabInteractable.enabled = false;
+            Debug.Log($"【多任务】{partName} 不属于当前任务，已锁定抓取");
+        }
     }
 }

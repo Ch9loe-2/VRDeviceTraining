@@ -217,6 +217,11 @@ public class TrainingTaskPanelUI : MonoBehaviour
 
         SetText(taskTitleText, taskTitle);
 
+        // 多任务支持：任务标题后附加当前任务名
+        string currentTaskName = trainingManager.CurrentTaskName;
+        if (!string.IsNullOrEmpty(currentTaskName))
+            SetText(taskTitleText, taskTitle + " — " + currentTaskName);
+
         // 阶段与当前步骤
         int stepCount = trainingManager.TotalSteps;
         int doneCount = allCompleted ? stepCount : index;
