@@ -46,6 +46,12 @@ task_motor,电机拆装培训,拆卸电机,Motor,动力系统
 | 结果持久化 | JSON 原子写入，记录耗时/错误/重置/分类统计 |
 | 重置机制 | 零件复位 + 状态恢复 + 统计清零，支持随时重训 |
 
+### 6. AI 培训指导助手（LLM 接入抽象层）
+- **接口抽象**：`IAIChatProvider` 依赖倒置，上层只依赖接口，底层可无缝切换任意 LLM 提供方
+- **双模式**：本地规则引擎（默认，无需 Key）/ DeepSeek 大模型（可选，Key 缺失或请求失败自动回退本地）
+- **上下文注入**：自动把"当前任务 + 阶段 + 步骤 + 误操作分类统计"作为上下文传给 AI，回答贴合培训实时状态
+- **运行时面板**：自动生成 AI 指导面板（零场景改动），订阅培训事件实时推送指导，支持快捷提问按钮（VR 中无需键盘输入）
+
 ---
 
 ## 🛠 技术栈
@@ -112,6 +118,11 @@ Assets/
 │   │   ├── TrainingResult.cs           — 结果数据模型（含分类统计）
 │   │   ├── TrainingResultPersistence.cs — JSON 持久化
 │   │   └── TrainingStep.cs             — 步骤数据模型
+│   ├── AI/
+│   │   ├── IAIChatProvider.cs          — LLM 提供方接口（依赖倒置）
+│   │   ├── LocalAIChatProvider.cs      — 本地规则引擎（默认，无需 Key）
+│   │   ├── DeepSeekChatProvider.cs     — DeepSeek 大模型接入（可选，失败自动回退）
+│   │   └── AITrainingAssistant.cs      — AI 助手主控（面板生成/事件订阅/提问）
 │   ├── Interaction/
 │   │   ├── PartInteractable.cs         — 零件交互（三态锁定/误操作检测）
 │   │   ├── TrainingGuideSystem.cs      — 3D 引导（高亮+箭头）
@@ -172,10 +183,30 @@ TrainingScene/
 
 ## 📌 后续规划
 
-- [ ] 接入大模型实现 AI 指导老师（实时解答操作问题）
+- [x] AI 指导老师（LLM 接入抽象层 + 本地规则引擎 + DeepSeek 可选）
 - [ ] 真实 VR 头显适配验证
 - [ ] 更多工业设备模型与拆装任务
 - [ ] 培训记录云端存储与回放
+
+---
+
+## 🤖 AI 指导老师使用说明
+
+### 启动 AI 指导面板（2 步）
+1. 场景中新建空物体（或挂到 `TrainingManager` 同一物体），挂 `AITrainingAssistant` 组件
+2. 点击 **Play**，左下角自动生成 AI 指导面板（零场景改动，运行时创建）
+
+面板包含：
+- **引擎标签**：显示当前提供方（"本地规则引擎" / "DeepSeek 大模型"）
+- **快捷提问按钮**："我该做什么？" / "为什么报错？"
+- **自动推送**：误操作、阶段切换、培训完成时 AI 自动给出指导
+
+### 切换为 DeepSeek 大模型（可选）
+1. 编辑 `Assets/Resources/DeepSeekConfig.json`，填入你的 API Key（`sk-` 开头，platform.deepseek.com 注册）
+2. `AITrainingAssistant` Inspector 勾选 `Use DeepSeek`
+3. Key 缺失 / 请求失败时自动回退本地引擎，演示永不中断
+
+> ⚠️ 真实 Key 请勿提交到 Git。仓库内的 `DeepSeekConfig.json` 为空白模板。
 
 ---
 
