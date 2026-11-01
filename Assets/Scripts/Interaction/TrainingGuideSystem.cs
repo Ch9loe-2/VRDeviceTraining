@@ -227,12 +227,15 @@ public class TrainingGuideSystem : MonoBehaviour
         shaft.transform.localScale = new Vector3(0.025f, 0.09f, 0.025f);
         shaft.transform.localPosition = Vector3.zero;
 
-        // 头：圆锥
-        GameObject head = GameObject.CreatePrimitive(PrimitiveType.Cone);
-        head.name = "ArrowHead";
+        // 头：圆锥（Unity 无 Cone 原语，用代码生成圆锥 Mesh）
+        GameObject head = new GameObject("ArrowHead");
         head.transform.SetParent(arrowRoot.transform, false);
         head.transform.localPosition = new Vector3(0f, 0.16f, 0f);
         head.transform.localScale = new Vector3(0.09f, 0.13f, 0.09f);
+
+        MeshFilter headFilter = head.AddComponent<MeshFilter>();
+        headFilter.sharedMesh = CreateConeMesh(1f, 2f, 24);
+        head.AddComponent<MeshRenderer>();
 
         // 统一颜色（发光）
         Shader standard = Shader.Find("Standard");
@@ -281,5 +284,63 @@ public class TrainingGuideSystem : MonoBehaviour
     {
         if (arrowRoot != null && arrowRoot.activeSelf)
             arrowRoot.SetActive(false);
+    }
+
+    /// <summary>
+    /// 运行时生成圆锥 Mesh（Unity 的 PrimitiveType 没有 Cone，需手动构建）。
+    /// </summary>
+    /// <param name="radius">底面半径</param>
+    /// <param name="height">圆锥高度</param>
+    /// <param name="segments">底面分段数（越多越圆）</param>
+    private static Mesh CreateConeMesh(float radius, float height, int segments)
+    {
+        Mesh mesh = new Mesh();
+
+        Vector3[] vertices = new Vector3[segments + 2];
+        Vector3[] normals = new Vector3[segments + 2];
+        int[] triangles = new int[segments * 6];
+
+        // 顶点 0：锥尖；顶点 1：底面圆心；其余：底面圆周
+        vertices[0] = new Vector3(0f, height * 0.5f, 0f);
+        vertices[1] = new Vector3(0f, -height * 0.5f, 0f);
+
+        for (int i = 0; i < segments; i++)
+        {
+            float angle = (i / (float)segments) * Mathf.PI * 2f;
+            float x = Mathf.Cos(angle) * radius;
+            float z = Mathf.Sin(angle) * radius;
+            vertices[i + 2] = new Vector3(x, -height * 0.5f, z);
+
+            // 侧面法线：指向外侧（简化处理，指向径向）
+            Vector3 radial = new Vector3(x, 0f, z).normalized;
+            normals[i + 2] = radial;
+        }
+        normals[0] = Vector3.up;
+        normals[1] = Vector3.down;
+
+        // 侧面三角（锥尖 → 圆周两两成面）
+        int tri = 0;
+        for (int i = 0; i < segments; i++)
+        {
+            int next = (i + 1) % segments;
+            triangles[tri++] = 0;
+            triangles[tri++] = i + 2;
+            triangles[tri++] = next + 2;
+        }
+
+        // 底面三角（底面圆心 → 圆周，法线朝下）
+        for (int i = 0; i < segments; i++)
+        {
+            int next = (i + 1) % segments;
+            triangles[tri++] = 1;
+            triangles[tri++] = next + 2;
+            triangles[tri++] = i + 2;
+        }
+
+        mesh.vertices = vertices;
+        mesh.normals = normals;
+        mesh.triangles = triangles;
+        mesh.RecalculateBounds();
+        return mesh;
     }
 }

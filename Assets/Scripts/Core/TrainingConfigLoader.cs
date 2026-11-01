@@ -226,7 +226,8 @@ public class TrainingConfigLoader : MonoBehaviour
         public List<StepRow> Rows;
     }
 
-    private class StepRow
+    /// <summary>CSV 单行步骤配置（对外可见，供 UI/工具读取任务明细）。</summary>
+    public class StepRow
     {
         public string TaskId;
         public string TaskName;
